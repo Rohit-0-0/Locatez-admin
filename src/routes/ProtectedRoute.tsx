@@ -22,11 +22,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) 
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (role === "USER") {
-    return <Navigate to="/unauthorized" replace />;
-  }
-
   if (allowedRoles && role && !allowedRoles.includes(role)) {
+    if (role === "USER") {
+      return <Navigate to="/chat-demo" replace />;
+    }
     return <Navigate to="/unauthorized" replace />;
   }
 

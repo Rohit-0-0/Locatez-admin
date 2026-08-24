@@ -19,9 +19,9 @@ export const Unauthorized: React.FC = () => {
           <Button variant="primary" onClick={() => logout()}>
             Sign out
           </Button>
-          <Link to="/">
+          <Link to="/chat-demo">
             <Button variant="secondary">
-              Go to Home
+              Go to LiveKit Chat Demo
             </Button>
           </Link>
         </div>

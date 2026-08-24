@@ -69,3 +69,40 @@ export interface ApiError {
   message: string;
   errors?: any[];
 }
+
+
+export type ChatRoomState = "PRE_ACCEPTANCE" | "ACCEPTED" | "CANCELLED" | "COMPLETED";
+
+export interface ChatRoom {
+  id: string;
+  videoRequestId: string;
+  requesterId: string;
+  fulfillerId: string;
+  state: ChatRoomState;
+  fulfillerMessageCount: number;
+  preAcceptanceMessageLimit: number;
+  fulfillerMessagesRemaining: number;
+  videoRequest?: {
+    id: string;
+    title: string;
+    status: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderName?: string;
+  content: string;
+  type: "TEXT" | "IMAGE" | "SYSTEM";
+  createdAt: string;
+}
+
+export interface LiveKitTokenData {
+  url: string;
+  roomName: string;
+  token: string;
+}

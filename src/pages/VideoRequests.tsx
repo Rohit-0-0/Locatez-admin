@@ -27,9 +27,10 @@ export const VideoRequests: React.FC = () => {
 
       const response = await getVideoRequests(params);
       // Backend returns video requests inside data.items and data.pagination
-      setRequests(response.data.items);
-      setTotal(response.data.pagination.total);
-      setTotalPages(response.data.pagination.totalPages);
+      const resData = response.data as any;
+      setRequests(Array.isArray(resData) ? resData : (resData?.items || []));
+      setTotal(resData?.pagination?.total || resData?.meta?.total || 0);
+      setTotalPages(resData?.pagination?.totalPages || resData?.meta?.totalPages || 1);
     } catch (err: any) {
       setError(err.response?.data?.message || err.message || "Failed to fetch video requests");
     } finally {

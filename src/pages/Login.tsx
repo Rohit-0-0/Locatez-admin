@@ -23,7 +23,10 @@ export const Login: React.FC = () => {
 
     try {
       await login({ email, password });
-      navigate(from, { replace: true });
+      const storedUserStr = localStorage.getItem("user");
+      const loggedUser = storedUserStr ? JSON.parse(storedUserStr) : null;
+      const targetPath = from !== "/" ? from : (loggedUser?.role === "USER" ? "/chat-demo" : "/");
+      navigate(targetPath, { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.message || err.message || "Failed to login");
     } finally {

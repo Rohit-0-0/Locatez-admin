@@ -43,9 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const response = await loginApi(credentials);
     const { user: authUser, accessToken, refreshToken } = response.data;
     
-    if (authUser.role === "USER") {
-      throw new Error("Role 'USER' is not authorized");
-    }
+    // Temporary local demo: Allow USER role to log in
 
     localStorage.setItem("user", JSON.stringify(authUser));
     localStorage.setItem("token", accessToken);
