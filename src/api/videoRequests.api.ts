@@ -1,0 +1,27 @@
+import { apiClient } from "./client";
+import { PaginatedResponse, VideoRequest } from "../types";
+
+export const getVideoRequests = async (params: any) => {
+  const response = await apiClient.get<PaginatedResponse<VideoRequest>>("/video-requests", { params });
+  return response.data;
+};
+
+export const getVideoRequestById = async (id: string) => {
+  const response = await apiClient.get<{ success: boolean; data: VideoRequest }>(`/video-requests/${id}`);
+  return response.data;
+};
+
+export const getStats = async () => {
+  const response = await apiClient.get<{ success: boolean; data: any }>("/video-requests/stats");
+  return response.data;
+};
+
+export const approveVideoRequest = async (id: string) => {
+  const response = await apiClient.patch<{ success: boolean; data: VideoRequest }>(`/video-requests/${id}/approve`);
+  return response.data;
+};
+
+export const rejectVideoRequest = async (id: string, reason: string) => {
+  const response = await apiClient.patch<{ success: boolean; data: VideoRequest }>(`/video-requests/${id}/reject`, { reason });
+  return response.data;
+};
