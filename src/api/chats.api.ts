@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import { ChatRoom, ChatMessage, LiveKitTokenData } from "../types";
+import { ChatRoom, ChatMessage } from "../types";
 
 export const createChatRoom = async (videoRequestId: string) => {
   const response = await apiClient.post<{ success: boolean; data: ChatRoom; message: string }>("/chats", {
@@ -43,13 +43,5 @@ export const sendChatMessage = async (
     content,
     type,
   });
-  return response.data;
-};
-
-export const getLiveKitToken = async (chatId: string) => {
-  const response = await apiClient.post<{
-    success: boolean;
-    data: LiveKitTokenData;
-  }>(`/chats/${chatId}/token`);
   return response.data;
 };

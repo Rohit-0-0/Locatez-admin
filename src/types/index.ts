@@ -93,16 +93,18 @@ export interface ChatRoom {
 
 export interface ChatMessage {
   id: string;
-  chatId: string;
+  chatId?: string;
+  chatRoomId?: string;
   senderId: string;
   senderName?: string;
+  sender?: {
+    id: string;
+    displayName?: string;
+    username?: string;
+    avatarUrl?: string;
+  };
   content: string;
-  type: "TEXT" | "IMAGE" | "SYSTEM";
+  type?: "TEXT" | "IMAGE" | "SYSTEM" | string;
   createdAt: string;
 }
 
-export interface LiveKitTokenData {
-  url: string;
-  roomName: string;
-  token: string;
-}

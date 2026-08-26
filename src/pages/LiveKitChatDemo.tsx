@@ -5,12 +5,11 @@ import {
   listChatRooms,
   getChatMessages,
   sendChatMessage,
-  getLiveKitToken,
   getChatRoom,
 } from "../api/chats.api";
-import { LiveKitService, ConnectionState } from "../services/livekit.service";
+import { SocketService, SocketStatus } from "../services/socket.service";
 import { ChatRoom, ChatMessage } from "../types";
-import { MessageSquare, RefreshCw, Send, ArrowLeft, ShieldAlert, CheckCircle2, Radio, UserCheck } from "lucide-react";
+import { MessageSquare, RefreshCw, Send, ArrowLeft, ShieldAlert, CheckCircle2, Radio, UserCheck, Lock } from "lucide-react";
 
 export const LiveKitChatDemo: React.FC = () => {
   const { user } = useAuth();
@@ -19,15 +18,15 @@ export const LiveKitChatDemo: React.FC = () => {
   const [videoRequestId, setVideoRequestId] = useState("");
   const [messagesMap, setMessagesMap] = useState<Map<string, ChatMessage>>(new Map());
   const [inputMessage, setInputMessage] = useState("");
-  const [lkState, setLkState] = useState<ConnectionState>(ConnectionState.Disconnected);
-  const [lkLocalIdentity, setLkLocalIdentity] = useState<string>("Disconnected");
-  const [lkRemoteIdentities, setLkRemoteIdentities] = useState<string[]>([]);
+  
+  // Realtime Socket.IO Connection State
+  const [socketStatus, setSocketStatus] = useState<SocketStatus>("DISCONNECTED");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
 
-  const lkServiceRef = useRef<LiveKitService>(new LiveKitService());
+  const socketServiceRef = useRef<SocketService>(new SocketService());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Authoritative User ID normalization
@@ -43,16 +42,41 @@ export const LiveKitChatDemo: React.FC = () => {
         ? "FULFILLER"
         : "UNKNOWN";
 
-  // Debug Role Logging
+  // Socket.IO Lifecycle Management
   useEffect(() => {
-    if (activeRoom) {
-      console.log("[Chat Role Debug]");
-      console.log("currentUserId:", currentUserId);
-      console.log("requesterId:", requesterId);
-      console.log("fulfillerId:", fulfillerId);
-      console.log("currentRole:", currentRole);
+    const token = localStorage.getItem("token");
+    if (token) {
+      socketServiceRef.current.connect(token);
     }
-  }, [activeRoom, currentUserId, requesterId, fulfillerId, currentRole]);
+
+    const unsubStatus = socketServiceRef.current.onStatusChange((status) => {
+      setSocketStatus(status);
+    });
+
+    const unsubNewMessage = socketServiceRef.current.onNewMessage((incomingMsg) => {
+      if (!incomingMsg) return;
+
+      const key = String(incomingMsg.id || (incomingMsg as any)._id || (incomingMsg as any).clientMsgId || "");
+      if (key) {
+        setMessagesMap((prev) => {
+          const next = new Map(prev);
+          if (next.has(key)) {
+            console.log(`[Socket.IO] Duplicate message ignored: ${key}`);
+          } else {
+            console.log(`[Socket.IO] Incoming real-time message received: ${key}`);
+          }
+          next.set(key, incomingMsg);
+          return next;
+        });
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsubNewMessage();
+      socketServiceRef.current.disconnect();
+    };
+  }, []);
 
   const loadRooms = async () => {
     setLoadingRooms(true);
@@ -70,9 +94,6 @@ export const LiveKitChatDemo: React.FC = () => {
 
   useEffect(() => {
     loadRooms();
-    return () => {
-      lkServiceRef.current.disconnect();
-    };
   }, []);
 
   useEffect(() => {
@@ -93,7 +114,7 @@ export const LiveKitChatDemo: React.FC = () => {
         });
         return next;
       });
-      console.log(`[Chat] Loaded ${list.length} messages from PostgreSQL.`);
+      console.log(`[Chat] Loaded ${list.length} historical messages.`);
     } catch (err: any) {
       console.error("[Chat] Failed to load historical messages:", err);
     }
@@ -110,93 +131,30 @@ export const LiveKitChatDemo: React.FC = () => {
     }
   };
 
-  const connectLiveKit = async (chatId: string) => {
-    setLkState(ConnectionState.Connecting);
-    try {
-      const tokenRes = await getLiveKitToken(chatId);
-      const { url, token: lkToken } = tokenRes.data;
-
-      if (!url || !lkToken) {
-        throw new Error("Missing LiveKit URL or token");
-      }
-
-      await lkServiceRef.current.connect(url, lkToken, {
-        onStateChanged: (state) => {
-          setLkState(state);
-          setLkLocalIdentity(lkServiceRef.current.getLocalIdentity());
-          setLkRemoteIdentities(lkServiceRef.current.getRemoteIdentities());
-        },
-        onDataReceived: (incomingData, participant, topic) => {
-          console.log(`[LiveKit] DataReceived topic=${topic || "chat.message"}`);
-          console.log("[LiveKit] sender identity:", participant?.identity || "server/broadcast");
-
-          if (incomingData) {
-            const msgObj = incomingData.message || incomingData;
-            const key = String(msgObj.id || (msgObj as any)._id || (msgObj as any).clientMsgId || "");
-
-            if (key) {
-              setMessagesMap((prev) => {
-                const next = new Map(prev);
-                if (next.has(key)) {
-                  console.log(`[Chat] duplicate message ignored: ${key}`);
-                } else {
-                  console.log(`[Chat] incoming real-time message ${key}`);
-                }
-                next.set(key, msgObj);
-                return next;
-              });
-            }
-
-            if (incomingData.fulfillerMessagesRemaining !== undefined) {
-              setActiveRoom((prevRoom) => {
-                if (!prevRoom) return null;
-                return {
-                  ...prevRoom,
-                  fulfillerMessagesRemaining: incomingData.fulfillerMessagesRemaining,
-                  fulfillerMessageCount: incomingData.fulfillerMessageCount ?? prevRoom.fulfillerMessageCount,
-                  state: incomingData.state || prevRoom.state,
-                };
-              });
-            }
-          }
-        },
-        onParticipantConnected: (p) => {
-          console.log("[LiveKit] remote participant connected:", p.identity);
-          setLkRemoteIdentities(lkServiceRef.current.getRemoteIdentities());
-        },
-        onParticipantDisconnected: (p) => {
-          console.log("[LiveKit] remote participant disconnected:", p.identity);
-          setLkRemoteIdentities(lkServiceRef.current.getRemoteIdentities());
-        },
-        onDisconnected: () => {
-          setLkState(ConnectionState.Disconnected);
-          setLkLocalIdentity("Disconnected");
-          setLkRemoteIdentities([]);
-        },
-        onError: (err) => {
-          console.error("[LiveKit] connection error:", err);
-          setLkState(ConnectionState.Disconnected);
-        },
-      });
-
-      const localIdent = lkServiceRef.current.getLocalIdentity();
-      setLkLocalIdentity(localIdent);
-      setLkRemoteIdentities(lkServiceRef.current.getRemoteIdentities());
-      console.log("[LiveKit Debug] local participant identity:", localIdent);
-
-    } catch (err: any) {
-      console.error("[LiveKit] connection error:", err);
-      setLkState(ConnectionState.Disconnected);
-    }
-  };
-
   const openRoom = async (room: ChatRoom) => {
+    // Leave previous room if any
+    if (activeRoom && activeRoom.id !== room.id) {
+      socketServiceRef.current.leaveRoom(activeRoom.id);
+    }
+
     setActiveRoom(room);
     setMessagesMap(new Map());
     setComposerError(null);
+
     await syncRoomDetails(room.id);
     await loadMessages(room.id);
-    await connectLiveKit(room.id);
+
+    // Join room via Socket.IO
+    socketServiceRef.current.joinRoom(room.id);
+  };
+
+  const closeRoom = () => {
+    if (activeRoom) {
+      socketServiceRef.current.leaveRoom(activeRoom.id);
+    }
+    setActiveRoom(null);
+    setMessagesMap(new Map());
+    loadRooms();
   };
 
   const handleStartChat = async () => {
@@ -217,7 +175,7 @@ export const LiveKitChatDemo: React.FC = () => {
     setComposerError(null);
 
     const content = inputMessage.trim();
-    console.log("[Chat] sending REST message");
+    console.log("[Chat] Sending REST message...");
 
     try {
       const res = await sendChatMessage(activeRoom.id, content, "TEXT");
@@ -225,7 +183,7 @@ export const LiveKitChatDemo: React.FC = () => {
       const savedMsg = data.message || (data as any);
 
       const msgKey = String(savedMsg.id || (savedMsg as any)._id || (savedMsg as any).clientMsgId || `msg_${Date.now()}`);
-      console.log(`[Chat] REST message persisted ${msgKey}`);
+      console.log(`[Chat] REST message persisted successfully: ${msgKey}`);
 
       setActiveRoom((prev) => {
         if (!prev) return null;
@@ -238,21 +196,19 @@ export const LiveKitChatDemo: React.FC = () => {
         };
       });
 
-      // Immediate sender render using REST response (NO livekit.publishData call)
+      // Insert confirmed message into state (keyed by ID for automatic deduplication)
       setMessagesMap((prev) => {
         const next = new Map(prev);
-        if (next.has(msgKey)) {
-          console.log(`[Chat] duplicate message ignored: ${msgKey}`);
-        }
         next.set(msgKey, savedMsg);
         return next;
       });
 
       setInputMessage("");
-      // Note: Outgoing LiveKit broadcast is handled server-side by backend via RoomServiceClient.sendData()
     } catch (err: any) {
+      // Handle fraud rejection, quota limit, or lifecycle errors from backend
       const msg = err.response?.data?.message || err.message || "Failed to send message";
       setComposerError(msg);
+      // DO NOT append fake/unconfirmed message to state on error
     } finally {
       setSendingMsg(false);
     }
@@ -262,10 +218,17 @@ export const LiveKitChatDemo: React.FC = () => {
     (a, b) => new Date(a.createdAt || (a as any).timestamp || 0).getTime() - new Date(b.createdAt || (b as any).timestamp || 0).getTime()
   );
 
+  // Video Request Lifecycle Enforcement
+  const requestStatus = (activeRoom?.videoRequest as any)?.status || "";
+  const isLifecycleClosed = ["COMPLETED", "CANCELLED", "EXPIRED", "REJECTED"].includes(requestStatus.toUpperCase());
+
+  // Fulfiller Quota Exhaustion Check
   const isFulfillerExhausted =
     activeRoom?.state === "PRE_ACCEPTANCE" &&
     currentRole === "FULFILLER" &&
     (activeRoom?.fulfillerMessagesRemaining ?? 5) <= 0;
+
+  const isMessagingBlocked = isLifecycleClosed || isFulfillerExhausted;
 
   return (
     <div className="space-y-6">
@@ -274,7 +237,7 @@ export const LiveKitChatDemo: React.FC = () => {
         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
           <div className="flex items-center gap-2 font-bold text-indigo-400 text-sm">
             <UserCheck className="h-4 w-4" />
-            <span>LIVEKIT & AUTH DIAGNOSTIC PANEL</span>
+            <span>SOCKET.IO & AUTH DIAGNOSTIC PANEL</span>
           </div>
           <span className="px-2 py-0.5 rounded font-bold uppercase text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
             Chat Role: {currentRole}
@@ -291,9 +254,8 @@ export const LiveKitChatDemo: React.FC = () => {
           <div><span className="text-slate-400">Requester ID:</span> <span className="text-slate-300">{requesterId || "N/A"}</span></div>
           <div><span className="text-slate-400">Fulfiller ID:</span> <span className="text-slate-300">{fulfillerId || "N/A"}</span></div>
 
-          <div><span className="text-slate-400">LiveKit State:</span> <span className={lkState === ConnectionState.Connected ? "text-emerald-400 font-bold" : "text-amber-400"}>{lkState}</span></div>
-          <div><span className="text-slate-400">LiveKit Local Identity:</span> <span className="text-emerald-300">{lkLocalIdentity}</span></div>
-          <div className="col-span-1 md:col-span-2 lg:col-span-3"><span className="text-slate-400">LiveKit Remote Participants:</span> <span className="text-emerald-300 font-bold">{lkRemoteIdentities.length > 0 ? lkRemoteIdentities.join(", ") : "None connected"}</span></div>
+          <div><span className="text-slate-400">Socket.IO State:</span> <span className={socketStatus === "CONNECTED" ? "text-emerald-400 font-bold" : "text-amber-400"}>{socketStatus}</span></div>
+          <div className="col-span-1 md:col-span-2"><span className="text-slate-400">Video Request Status:</span> <span className={isLifecycleClosed ? "text-red-400 font-bold" : "text-emerald-300"}>{requestStatus || "ACTIVE"}</span></div>
         </div>
       </div>
 
@@ -301,10 +263,10 @@ export const LiveKitChatDemo: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <MessageSquare className="h-7 w-7 text-indigo-600" />
-            Locatez LiveKit Chat Demo
+            Locatez Socket.IO Chat Demo
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Real-time LiveKit transport with REST API persistence & PostgreSQL history.
+            Real-time Socket.IO transport with REST API persistence & backend policy enforcement.
           </p>
         </div>
         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -405,11 +367,7 @@ export const LiveKitChatDemo: React.FC = () => {
           <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => {
-                  lkServiceRef.current.disconnect();
-                  setActiveRoom(null);
-                  loadRooms();
-                }}
+                onClick={closeRoom}
                 className="p-1.5 hover:bg-gray-200 rounded-md text-gray-600 transition"
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -438,36 +396,46 @@ export const LiveKitChatDemo: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 text-xs font-semibold">
                 <Radio className={`h-4 w-4 ${
-                  lkState === ConnectionState.Connected
+                  socketStatus === "CONNECTED"
                     ? "text-emerald-500 animate-pulse"
-                    : lkState === ConnectionState.Connecting
+                    : socketStatus === "CONNECTING"
                     ? "text-amber-500"
                     : "text-red-500"
                 }`} />
-                <span className={lkState === ConnectionState.Connected ? "text-emerald-700 font-bold" : "text-gray-600"}>
-                  {lkState === ConnectionState.Connected
-                    ? `LiveKit Connected (${lkRemoteIdentities.length} remote online)`
-                    : `LiveKit ${lkState}`}
+                <span className={socketStatus === "CONNECTED" ? "text-emerald-700 font-bold" : "text-gray-600"}>
+                  {socketStatus === "CONNECTED"
+                    ? "Socket.IO Connected"
+                    : `Socket.IO ${socketStatus}`}
                 </span>
               </div>
 
               <button
-                onClick={() => connectLiveKit(activeRoom.id)}
+                onClick={() => {
+                  const token = localStorage.getItem("token");
+                  if (token) socketServiceRef.current.connect(token);
+                }}
                 className="text-xs bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-2.5 py-1 rounded font-medium"
               >
-                Reconnect LiveKit
+                Reconnect
               </button>
             </div>
           </div>
 
           <div className={`px-4 py-2 text-xs font-medium border-b flex items-center justify-between ${
-            activeRoom.state === "ACCEPTED"
+            isLifecycleClosed
+              ? "bg-red-50 text-red-800 border-red-200"
+              : activeRoom.state === "ACCEPTED"
               ? "bg-emerald-50 text-emerald-800 border-emerald-200"
               : isFulfillerExhausted
               ? "bg-red-50 text-red-800 border-red-200"
               : "bg-indigo-50 text-indigo-800 border-indigo-200"
           }`}>
-            {activeRoom.state === "ACCEPTED" ? (
+            {isLifecycleClosed ? (
+              <span className="flex items-center gap-1.5 font-bold">
+                <Lock className="h-4 w-4 text-red-600" />
+                Messaging is disabled because this video request is {requestStatus}.
+              </span>
+            ) : activeRoom.state === "ACCEPTED" ? (
               <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Chat is ACCEPTED. Pre-acceptance limit no longer applies (unlimited chat).</span>
             ) : (
               <span>
@@ -502,7 +470,7 @@ export const LiveKitChatDemo: React.FC = () => {
                       ? "FULFILLER"
                       : "UNKNOWN";
 
-                // Independent Ownership Determination
+                // Independent Ownership Determination based on senderId === currentUserId
                 const isOwnMessage =
                   senderId.length > 0 &&
                   currentUserId.length > 0 &&
@@ -515,7 +483,7 @@ export const LiveKitChatDemo: React.FC = () => {
                   ? "Requester"
                   : senderRole === "FULFILLER"
                   ? "Fulfiller"
-                  : msg.senderName || `User ${senderId.slice(0, 8)}`;
+                  : msg.sender?.displayName || msg.sender?.username || msg.senderName || `User ${senderId.slice(0, 8)}`;
 
                 const timestampText = msg.createdAt
                   ? new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -559,18 +527,20 @@ export const LiveKitChatDemo: React.FC = () => {
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                disabled={isFulfillerExhausted || sendingMsg}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !isMessagingBlocked && !sendingMsg && handleSend()}
+                disabled={isMessagingBlocked || sendingMsg}
                 placeholder={
-                  isFulfillerExhausted
+                  isLifecycleClosed
+                    ? `Messaging disabled (${requestStatus})`
+                    : isFulfillerExhausted
                     ? "You have reached the pre-acceptance question limit."
                     : "Type message..."
                 }
-                className="flex-1 px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400"
+                className="flex-1 px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400 cursor-text disabled:cursor-not-allowed"
               />
               <button
                 onClick={handleSend}
-                disabled={isFulfillerExhausted || sendingMsg || !inputMessage.trim()}
+                disabled={isMessagingBlocked || sendingMsg || !inputMessage.trim()}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition flex items-center gap-1.5"
               >
                 <Send className="h-4 w-4" /> Send
