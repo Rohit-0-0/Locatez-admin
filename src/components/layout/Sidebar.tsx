@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Video, ShieldAlert, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Users, Video, ShieldAlert, MessageSquare, Settings } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
 
@@ -13,6 +13,7 @@ export const Sidebar: React.FC = () => {
     { name: "Users", path: "/users", icon: Users, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
     { name: "Video Requests", path: "/video-requests", icon: Video, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
     { name: "Audit Logs", path: "/audit-logs", icon: ShieldAlert, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
+    { name: "Admin Settings", path: "/settings", icon: Settings, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
     { name: "LiveKit Chat Demo", path: "/chat-demo", icon: MessageSquare, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
   ];
 

@@ -9,6 +9,7 @@ import { UserDetails } from "../pages/UserDetails";
 import { VideoRequests } from "../pages/VideoRequests";
 import { VideoRequestDetails } from "../pages/VideoRequestDetails";
 import { AuditLogs } from "../pages/AuditLogs";
+import { Settings } from "../pages/Settings";
 import { Unauthorized } from "../pages/Unauthorized";
 import { LiveKitChatDemo } from "../pages/LiveKitChatDemo";
 import { useAuth } from "../context/AuthContext";
@@ -43,6 +44,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="/video-requests" element={<VideoRequests />} />
           <Route path="/video-requests/:id" element={<VideoRequestDetails />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
       </Route>
 
