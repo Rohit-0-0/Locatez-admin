@@ -43,10 +43,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const response = await loginApi(credentials);
     const { user: authUser, accessToken, refreshToken } = response.data;
     
-    // Only ADMIN, MODERATOR, and SUPERADMIN can log in to the admin panel
-    if (authUser.role === "USER") {
-      throw new Error("Access denied. Simple users cannot log in to the Admin Panel.");
-    }
+    // Temporarily allow simple users (USER role) to log in
+    // if (authUser.role === "USER") {
+    //   throw new Error("Access denied. Simple users cannot log in to the Admin Panel.");
+    // }
 
     localStorage.setItem("user", JSON.stringify(authUser));
     localStorage.setItem("token", accessToken);
