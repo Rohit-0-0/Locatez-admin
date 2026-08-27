@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { getVideoRequests } from "../api/videoRequests.api";
-import { VideoRequest } from "../types";
+import { getVideoRequests, createVideoRequest } from "../api/videoRequests.api";
+import { getCategories } from "../api/categories.api";
+import { VideoRequest, Category } from "../types";
 import { Pagination } from "../components/common/Pagination";
 import { Badge } from "../components/common/Badge";
+import { Button } from "../components/common/Button";
+import { Modal } from "../components/common/Modal";
+import { Input } from "../components/common/Input";
 import { Link } from "react-router-dom";
-import { Eye, AlertTriangle } from "lucide-react";
+import { Eye, AlertTriangle, Plus } from "lucide-react";
 
 export const VideoRequests: React.FC = () => {
   const [requests, setRequests] = useState<VideoRequest[]>([]);
@@ -16,8 +20,19 @@ export const VideoRequests: React.FC = () => {
   const [limit] = useState(10);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  
   const [statusFilter, setStatusFilter] = useState<string>("");
+
+  // Create Video Request Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [rewardAmount, setRewardAmount] = useState<number | "">("");
+  const [createLoading, setCreateLoading] = useState(false);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -26,7 +41,6 @@ export const VideoRequests: React.FC = () => {
       if (statusFilter) params.status = statusFilter;
 
       const response = await getVideoRequests(params);
-      // Backend returns video requests inside data.items and data.pagination
       const resData = response.data as any;
       setRequests(Array.isArray(resData) ? resData : (resData?.items || []));
       setTotal(resData?.pagination?.total || resData?.meta?.total || 0);
@@ -38,9 +52,60 @@ export const VideoRequests: React.FC = () => {
     }
   };
 
+  const fetchUserCategories = async () => {
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const res = await getCategories();
+      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
+      setCategories(list);
+      if (list.length > 0) {
+        setSelectedCategoryId(list[0].id);
+      }
+    } catch (err: any) {
+      setCategoriesError(err.response?.data?.message || err.message || "Failed to load categories");
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchRequests();
   }, [page, limit, statusFilter]);
+
+  const handleOpenCreateModal = () => {
+    setIsCreateModalOpen(true);
+    fetchUserCategories();
+  };
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !description.trim() || !selectedCategoryId) {
+      alert("Please fill in all required fields and select a category.");
+      return;
+    }
+
+    setCreateLoading(true);
+    try {
+      await createVideoRequest({
+        title: title.trim(),
+        description: description.trim(),
+        categoryId: selectedCategoryId,
+        rewardAmount: typeof rewardAmount === "number" ? rewardAmount : 0,
+      });
+
+      // Reset form
+      setTitle("");
+      setDescription("");
+      setRewardAmount("");
+      setIsCreateModalOpen(false);
+      fetchRequests();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to create video request");
+    } finally {
+      setCreateLoading(false);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -61,6 +126,9 @@ export const VideoRequests: React.FC = () => {
           <h1 className="text-2xl font-semibold text-gray-900">Video Requests</h1>
           <p className="mt-2 text-sm text-gray-700">Manage and moderate video requests.</p>
         </div>
+        <Button onClick={handleOpenCreateModal} className="mt-4 sm:mt-0 flex items-center gap-1.5">
+          <Plus className="h-4 w-4" /> Create Video Request
+        </Button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 mb-4">
@@ -94,6 +162,7 @@ export const VideoRequests: React.FC = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Title</th>
+                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Category</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Requester</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Reward</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
@@ -114,6 +183,9 @@ export const VideoRequests: React.FC = () => {
                         Restricted Area ({request.restrictedAreaType})
                       </div>
                     )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    {request.category?.name || "None"}
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                     {request.requester?.username || "Unknown"}
@@ -145,6 +217,88 @@ export const VideoRequests: React.FC = () => {
           />
         </div>
       )}
+
+      {/* Create Video Request Modal */}
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create Video Request">
+        <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <Input
+            id="title"
+            type="text"
+            label="Request Title"
+            placeholder="e.g. Check stock of iPhone 15 at Downtown Store"
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={createLoading}
+          />
+
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              id="description"
+              rows={3}
+              required
+              className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Describe what video coverage you need..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={createLoading}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
+              <span>Category (Dynamic API Feed)</span>
+              {categoriesLoading && <span className="text-xs text-gray-400">Loading categories...</span>}
+            </label>
+            {categoriesError ? (
+              <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{categoriesError}</div>
+            ) : categories.length === 0 && !categoriesLoading ? (
+              <div className="text-xs text-amber-700 bg-amber-50 p-2 rounded">
+                No active categories returned from API.
+              </div>
+            ) : (
+              <select
+                id="category"
+                required
+                className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                value={selectedCategoryId}
+                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                disabled={createLoading || categoriesLoading}
+              >
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <Input
+            id="rewardAmount"
+            type="number"
+            step="0.01"
+            label="Reward Amount ($)"
+            placeholder="15.00"
+            required
+            value={rewardAmount}
+            onChange={(e) => setRewardAmount(e.target.value ? parseFloat(e.target.value) : "")}
+            disabled={createLoading}
+          />
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={createLoading} disabled={!selectedCategoryId}>
+              Submit Request
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

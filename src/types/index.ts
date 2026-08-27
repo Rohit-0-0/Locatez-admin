@@ -14,6 +14,27 @@ export interface User {
   lastLoginAt?: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CategorySuggestion {
+  id: string;
+  name: string;
+  normalizedName: string;
+  occurrenceCount: number;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface VideoRequest {
   id: string;
   title: string;
@@ -21,7 +42,7 @@ export interface VideoRequest {
   requesterId: string;
   requester?: User;
   categoryId: string;
-  category?: { id: string; name: string };
+  category?: Category | { id: string; name: string };
   rewardAmount: number;
   payoutType: string;
   status: "PENDING" | "OPEN" | "ACCEPTED" | "ONGOING" | "IN_PROGRESS" | "COMPLETED" | "EXPIRED" | "CANCELLED" | "REJECTED";
@@ -70,7 +91,6 @@ export interface ApiError {
   errors?: any[];
 }
 
-
 export type ChatRoomState = "PRE_ACCEPTANCE" | "ACCEPTED" | "CANCELLED" | "COMPLETED";
 
 export interface ChatRoom {
@@ -107,4 +127,3 @@ export interface ChatMessage {
   type?: "TEXT" | "IMAGE" | "SYSTEM" | string;
   createdAt: string;
 }
-

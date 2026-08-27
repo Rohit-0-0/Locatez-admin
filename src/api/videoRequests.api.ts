@@ -11,6 +11,20 @@ export const getVideoRequestById = async (id: string) => {
   return response.data;
 };
 
+export const createVideoRequest = async (data: {
+  title: string;
+  description: string;
+  categoryId: string;
+  rewardAmount: number;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  payoutType?: string;
+}) => {
+  const response = await apiClient.post<{ success: boolean; data: VideoRequest }>("/video-requests", data);
+  return response.data;
+};
+
 export const getStats = async () => {
   const response = await apiClient.get<{ success: boolean; data: any }>("/video-requests/stats");
   return response.data;

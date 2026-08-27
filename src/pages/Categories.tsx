@@ -1,0 +1,536 @@
+import React, { useEffect, useState } from "react";
+import {
+  getAdminCategories,
+  createCategory,
+  updateCategory,
+  updateCategoryStatus,
+  deleteCategory,
+  getCategorySuggestions,
+  acceptCategorySuggestion,
+  rejectCategorySuggestion,
+} from "../api/categories.api";
+import { Category, CategorySuggestion } from "../types";
+import { Badge } from "../components/common/Badge";
+import { Button } from "../components/common/Button";
+import { Modal } from "../components/common/Modal";
+import { Input } from "../components/common/Input";
+import {
+  Plus,
+  Edit2,
+  Power,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  Tag,
+  ShieldCheck,
+  RefreshCw,
+  Clock,
+  Flame,
+} from "lucide-react";
+
+export const Categories: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<"categories" | "suggestions">("categories");
+
+  // Category State
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+
+  // Modals for Categories
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
+
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [deactivatingCategory, setDeactivatingCategory] = useState<Category | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Suggestions State
+  const [suggestions, setSuggestions] = useState<CategorySuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+
+  // Fetch Categories
+  const fetchCategories = async () => {
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const res = await getAdminCategories();
+      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
+      setCategories(list);
+    } catch (err: any) {
+      setCategoriesError(err.response?.data?.message || err.message || "Failed to load categories");
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
+  // Fetch Suggestions
+  const fetchSuggestions = async () => {
+    setSuggestionsLoading(true);
+    setSuggestionsError(null);
+    try {
+      const res = await getCategorySuggestions();
+      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
+      setSuggestions(list);
+    } catch (err: any) {
+      setSuggestionsError(err.response?.data?.message || err.message || "Failed to load suggestions");
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "categories") {
+      fetchCategories();
+    } else {
+      fetchSuggestions();
+    }
+  }, [activeTab]);
+
+  // Create Category Handler (POST /api/v1/categories)
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setActionLoading(true);
+    try {
+      await createCategory({ name: newCategoryName.trim() });
+      setNewCategoryName("");
+      setIsCreateModalOpen(false);
+      fetchCategories();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to create category");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Edit Category Handler (PATCH /api/v1/categories/:id)
+  const handleEditCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory || !editCategoryName.trim()) return;
+    setActionLoading(true);
+    try {
+      await updateCategory(editingCategory.id, { name: editCategoryName.trim() });
+      setEditingCategory(null);
+      setEditCategoryName("");
+      setIsEditModalOpen(false);
+      fetchCategories();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to update category");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Toggle Category Status (PATCH /api/v1/categories/:id/status)
+  const handleToggleStatus = async (cat: Category) => {
+    if (isProtectedCategory(cat)) return;
+    const targetStatus = !cat.isActive;
+    const actionText = targetStatus ? "enable" : "disable";
+
+    try {
+      await updateCategoryStatus(cat.id, targetStatus);
+      fetchCategories();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || `Failed to ${actionText} category`);
+    }
+  };
+
+  // Soft Deactivate Category Handler (DELETE /api/v1/categories/:id)
+  const handleConfirmDeactivate = async () => {
+    if (!deactivatingCategory || isProtectedCategory(deactivatingCategory)) return;
+    setActionLoading(true);
+    try {
+      console.log(`[Categories] Invoking DELETE /api/v1/categories/${deactivatingCategory.id}`);
+      await deleteCategory(deactivatingCategory.id);
+      setIsDeactivateModalOpen(false);
+      setDeactivatingCategory(null);
+      fetchCategories();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to deactivate category");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Accept AI Suggestion Handler
+  const handleAcceptSuggestion = async (sug: CategorySuggestion) => {
+    if (!window.confirm(`Accept AI suggestion "${sug.name}"?`)) return;
+    try {
+      await acceptCategorySuggestion(sug.id);
+      fetchSuggestions();
+      if (activeTab === "categories") fetchCategories();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to accept suggestion");
+    }
+  };
+
+  // Reject AI Suggestion Handler
+  const handleRejectSuggestion = async (sug: CategorySuggestion) => {
+    if (!window.confirm(`Reject AI suggestion "${sug.name}"?`)) return;
+    try {
+      await rejectCategorySuggestion(sug.id);
+      fetchSuggestions();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to reject suggestion");
+    }
+  };
+
+  // Protection check for "Other" category
+  const isProtectedCategory = (cat: Category) => {
+    return cat.slug?.toLowerCase() === "other" || cat.name?.toLowerCase() === "other";
+  };
+
+  const getSuggestionStatusBadge = (status: string) => {
+    switch (status?.toUpperCase()) {
+      case "ACCEPTED":
+        return <Badge variant="success">ACCEPTED</Badge>;
+      case "REJECTED":
+        return <Badge variant="danger">REJECTED</Badge>;
+      case "PENDING":
+      default:
+        return <Badge variant="warning">PENDING</Badge>;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="sm:flex sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
+            <Tag className="h-6 w-6 text-primary" /> Category Management
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Manage system request categories and review AI category suggestions.
+          </p>
+        </div>
+        {activeTab === "categories" && (
+          <Button onClick={() => setIsCreateModalOpen(true)} className="mt-4 sm:mt-0 flex items-center gap-1.5">
+            <Plus className="h-4 w-4" /> Create Category
+          </Button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab("categories")}
+            className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition ${
+              activeTab === "categories"
+                ? "border-primary text-primary font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <Tag className="h-4 w-4" /> Active & Admin Categories ({categories.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("suggestions")}
+            className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition ${
+              activeTab === "suggestions"
+                ? "border-primary text-primary font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <Sparkles className="h-4 w-4 text-purple-600" /> AI Suggestions ({suggestions.length})
+          </button>
+        </nav>
+      </div>
+
+      {/* TAB 1: Categories Management */}
+      {activeTab === "categories" && (
+        <div>
+          {categoriesError ? (
+            <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">{categoriesError}</div>
+          ) : categoriesLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 space-y-3">
+              <Tag className="h-10 w-10 mx-auto text-gray-400" />
+              <p className="text-base font-medium text-gray-900">No categories found</p>
+              <p className="text-xs">Click "Create Category" above to add the first category.</p>
+            </div>
+          ) : (
+            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+              <table className="min-w-full divide-y divide-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                      Name
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Slug
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Status
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Created At
+                    </th>
+                    <th scope="col" className="relative py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-6">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {categories.map((cat) => {
+                    const protectedItem = isProtectedCategory(cat);
+                    return (
+                      <tr key={cat.id} className={protectedItem ? "bg-amber-50/30" : ""}>
+                        <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                          <div className="flex items-center gap-2">
+                            <span>{cat.name}</span>
+                            {protectedItem && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                <ShieldCheck className="h-3 w-3 text-amber-600" /> Protected
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 font-mono text-xs">
+                          {cat.slug || "-"}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          {cat.isActive ? (
+                            <Badge variant="success">ACTIVE</Badge>
+                          ) : (
+                            <Badge variant="default" className="bg-gray-100 text-gray-600">INACTIVE</Badge>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          {cat.createdAt ? new Date(cat.createdAt).toLocaleDateString() : "-"}
+                        </td>
+                        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                          {protectedItem ? (
+                            <span className="text-xs text-gray-400 italic font-medium">System Protected</span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-2">
+                              {/* Edit Button */}
+                              <button
+                                onClick={() => {
+                                  setEditingCategory(cat);
+                                  setEditCategoryName(cat.name);
+                                  setIsEditModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 transition"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" /> Edit
+                              </button>
+
+                              {/* Toggle Status Button */}
+                              <button
+                                onClick={() => handleToggleStatus(cat)}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border transition ${
+                                  cat.isActive
+                                    ? "text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100"
+                                    : "text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
+                                }`}
+                              >
+                                <Power className="h-3.5 w-3.5" /> {cat.isActive ? "Disable" : "Enable"}
+                              </button>
+
+                              {/* DELETE / Deactivate Button */}
+                              <button
+                                onClick={() => {
+                                  setDeactivatingCategory(cat);
+                                  setIsDeactivateModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-red-600" /> Deactivate
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: AI Category Suggestions */}
+      {activeTab === "suggestions" && (
+        <div>
+          <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4 flex items-start gap-3 text-xs text-purple-900">
+            <Sparkles className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-purple-950">AI Category Suggestions Moderation</p>
+              <p className="mt-1">
+                These suggested categories are automatically identified by AI from unmapped user video requests.
+                Admin action is required to explicitly accept or reject suggestions before a category is created.
+              </p>
+            </div>
+          </div>
+
+          {suggestionsError ? (
+            <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">{suggestionsError}</div>
+          ) : suggestionsLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+            </div>
+          ) : suggestions.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 space-y-3">
+              <Sparkles className="h-10 w-10 mx-auto text-purple-400" />
+              <p className="text-base font-medium text-gray-900">No pending AI suggestions</p>
+              <p className="text-xs text-gray-400">All AI-suggested categories have been moderated.</p>
+            </div>
+          ) : (
+            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+              <table className="min-w-full divide-y divide-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                      Suggested Name
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Normalized Key
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Occurrences
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Status
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      First / Last Seen
+                    </th>
+                    <th scope="col" className="relative py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-6">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {suggestions.map((sug) => (
+                    <tr key={sug.id}>
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                        {sug.name}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 font-mono text-xs">
+                        {sug.normalizedName || "-"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700">
+                        <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-xs">
+                          <Flame className="h-3.5 w-3.5 text-purple-600" /> {sug.occurrenceCount || 1} occurrences
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {getSuggestionStatusBadge(sug.status)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="flex items-center gap-1"><Clock className="h-3 w-3 text-gray-400" /> First: {sug.firstSeenAt ? new Date(sug.firstSeenAt).toLocaleDateString() : "-"}</span>
+                          <span className="flex items-center gap-1"><RefreshCw className="h-3 w-3 text-gray-400" /> Last: {sug.lastSeenAt ? new Date(sug.lastSeenAt).toLocaleDateString() : "-"}</span>
+                        </div>
+                      </td>
+                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        {sug.status?.toUpperCase() === "PENDING" ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleAcceptSuggestion(sug)}
+                              className="bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-xs py-1 px-2.5 flex items-center gap-1"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Accept
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => handleRejectSuggestion(sug)}
+                              className="text-xs py-1 px-2.5 flex items-center gap-1"
+                            >
+                              <XCircle className="h-3.5 w-3.5" /> Reject
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">Moderated</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create Category Modal */}
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create New Category">
+        <form onSubmit={handleCreateCategory} className="space-y-4">
+          <Input
+            id="categoryName"
+            type="text"
+            label="Category Name"
+            placeholder="e.g. Check restaurant menu"
+            required
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            disabled={actionLoading}
+          />
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={actionLoading}>
+              Create Category
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Category Modal */}
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Category">
+        <form onSubmit={handleEditCategory} className="space-y-4">
+          <Input
+            id="editCategoryName"
+            type="text"
+            label="Category Name"
+            required
+            value={editCategoryName}
+            onChange={(e) => setEditCategoryName(e.target.value)}
+            disabled={actionLoading}
+          />
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={actionLoading}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Soft Deactivate Category Confirmation Modal (DELETE /api/v1/categories/:id) */}
+      <Modal isOpen={isDeactivateModalOpen} onClose={() => setIsDeactivateModalOpen(false)} title="Soft-Deactivate Category">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Are you sure you want to soft-deactivate category <strong className="text-gray-900">"{deactivatingCategory?.name}"</strong>?
+          </p>
+          <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
+            This issues an HTTP <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">DELETE /api/v1/categories/{deactivatingCategory?.id}</code> request to perform soft deactivation. The database record will not be physically deleted.
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsDeactivateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={handleConfirmDeactivate} isLoading={actionLoading}>
+              Deactivate Category
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};

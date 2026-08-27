@@ -8,6 +8,7 @@ import { Users } from "../pages/Users";
 import { UserDetails } from "../pages/UserDetails";
 import { VideoRequests } from "../pages/VideoRequests";
 import { VideoRequestDetails } from "../pages/VideoRequestDetails";
+import { Categories } from "../pages/Categories";
 import { AuditLogs } from "../pages/AuditLogs";
 import { Settings } from "../pages/Settings";
 import { Unauthorized } from "../pages/Unauthorized";
@@ -43,6 +44,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="/users/:id" element={<UserDetails />} />
           <Route path="/video-requests" element={<VideoRequests />} />
           <Route path="/video-requests/:id" element={<VideoRequestDetails />} />
+          <Route path="/categories" element={<Categories />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
