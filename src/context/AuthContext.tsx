@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { User, Role } from "../types";
 import { login as loginApi, logout as logoutApi } from "../api/auth.api";
+import { registerCurrentFcmToken, unregisterCurrentFcmToken } from "../services/firebase.service";
 
 interface AuthContextType {
   user: User | null;
@@ -39,14 +40,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener("auth-unauthorized", handleUnauthorized);
   }, []);
 
+  // Whenever user becomes authenticated, attempt FCM device token registration
+  useEffect(() => {
+    if (token) {
+      registerCurrentFcmToken().catch((err) => {
+        console.error("[FCM] Error registering FCM token on session restore:", err);
+      });
+    }
+  }, [token]);
+
   const login = async (credentials: any) => {
     const response = await loginApi(credentials);
     const { user: authUser, accessToken, refreshToken } = response.data;
-    
-    // Temporarily allow simple users (USER role) to log in
-    // if (authUser.role === "USER") {
-    //   throw new Error("Access denied. Simple users cannot log in to the Admin Panel.");
-    // }
 
     localStorage.setItem("user", JSON.stringify(authUser));
     localStorage.setItem("token", accessToken);
@@ -57,9 +62,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setUser(authUser);
     setToken(accessToken);
+
+    // Register FCM token with backend for the newly logged-in user
+    registerCurrentFcmToken().catch((err) => {
+      console.error("[FCM] Post-login FCM registration error:", err);
+    });
   };
 
   const logout = async () => {
+    try {
+      // Deactivate FCM device token on backend before tearing down session
+      await unregisterCurrentFcmToken();
+    } catch (fcmErr) {
+      console.error("[FCM] Failed to unregister FCM token during logout:", fcmErr);
+    }
+
     try {
       const refreshToken = localStorage.getItem("refreshToken");
       if (refreshToken) {

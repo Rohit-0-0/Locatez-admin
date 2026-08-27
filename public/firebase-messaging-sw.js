@@ -4,12 +4,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-com
 
 // Parse URL search params or fallback to config
 const defaultConfig = {
-  apiKey: "AIzaSy_YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef123456"
+  apiKey: "AIzaSyDmGYBCeyAUi7BMIXzQtNVQXsQqU_MZaTs",
+  authDomain: "locatez-e6991.firebaseapp.com",
+  projectId: "locatez-e6991",
+  storageBucket: "locatez-e6991.firebasestorage.app",
+  messagingSenderId: "941264005265",
+  appId: "1:941264005265:web:bdd0fcda314125380a7730"
 };
 
 try {
@@ -21,10 +21,11 @@ try {
 
   messaging.onBackgroundMessage((payload) => {
     console.log('[firebase-messaging-sw.js] Background message received:', payload);
-    const notificationTitle = payload.notification?.title || 'New Notification';
+    const notificationTitle = payload.notification?.title || payload.data?.title || 'New Notification';
     const notificationOptions = {
-      body: payload.notification?.body || '',
-      icon: payload.notification?.icon || '/favicon.svg'
+      body: payload.notification?.body || payload.data?.body || payload.data?.message || payload.data?.content || '',
+      icon: payload.notification?.icon || payload.data?.icon || '/favicon.svg',
+      data: payload.data
     };
     self.registration.showNotification(notificationTitle, notificationOptions);
   });
