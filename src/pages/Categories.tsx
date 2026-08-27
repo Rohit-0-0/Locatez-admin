@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Clock,
   Flame,
+  AlertTriangle,
 } from "lucide-react";
 
 export const Categories: React.FC = () => {
@@ -40,13 +41,14 @@ export const Categories: React.FC = () => {
   // Modals for Categories
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const [newCategoryName, setNewCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [deactivatingCategory, setDeactivatingCategory] = useState<Category | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Suggestions State
   const [suggestions, setSuggestions] = useState<CategorySuggestion[]>([]);
@@ -91,7 +93,7 @@ export const Categories: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Create Category Handler (POST /api/v1/categories)
+  // 1. Create Category Handler (POST /api/v1/categories)
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
@@ -108,10 +110,14 @@ export const Categories: React.FC = () => {
     }
   };
 
-  // Edit Category Handler (PATCH /api/v1/categories/:id)
+  // 2. Edit Category Name Handler (PATCH /api/v1/categories/:id)
   const handleEditCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCategory || !editCategoryName.trim()) return;
+    if (isProtectedCategory(editingCategory)) {
+      alert("The 'Other' category is system protected and cannot be renamed.");
+      return;
+    }
     setActionLoading(true);
     try {
       await updateCategory(editingCategory.id, { name: editCategoryName.trim() });
@@ -120,15 +126,18 @@ export const Categories: React.FC = () => {
       setIsEditModalOpen(false);
       fetchCategories();
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to update category");
+      alert(err.response?.data?.message || err.message || "Failed to update category name");
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Toggle Category Status (PATCH /api/v1/categories/:id/status)
+  // 3. Toggle Category Status Handler (PATCH /api/v1/categories/:id/status)
   const handleToggleStatus = async (cat: Category) => {
-    if (isProtectedCategory(cat)) return;
+    if (isProtectedCategory(cat)) {
+      alert("The 'Other' category is system protected and cannot be disabled.");
+      return;
+    }
     const targetStatus = !cat.isActive;
     const actionText = targetStatus ? "enable" : "disable";
 
@@ -140,18 +149,31 @@ export const Categories: React.FC = () => {
     }
   };
 
-  // Soft Deactivate Category Handler (DELETE /api/v1/categories/:id)
-  const handleConfirmDeactivate = async () => {
-    if (!deactivatingCategory || isProtectedCategory(deactivatingCategory)) return;
+  // 4. Hard Delete Category Handler (DELETE /api/v1/categories/:id)
+  const handleConfirmDelete = async () => {
+    if (!deletingCategory || isProtectedCategory(deletingCategory)) return;
     setActionLoading(true);
+    setDeleteError(null);
     try {
-      console.log(`[Categories] Invoking DELETE /api/v1/categories/${deactivatingCategory.id}`);
-      await deleteCategory(deactivatingCategory.id);
-      setIsDeactivateModalOpen(false);
-      setDeactivatingCategory(null);
+      await deleteCategory(deletingCategory.id);
+      setIsDeleteModalOpen(false);
+      setDeletingCategory(null);
       fetchCategories();
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to deactivate category");
+      const serverMsg = err.response?.data?.message || err.message || "";
+      if (
+        serverMsg.toLowerCase().includes("foreign key") ||
+        serverMsg.toLowerCase().includes("reference") ||
+        serverMsg.toLowerCase().includes("constraint") ||
+        serverMsg.toLowerCase().includes("in use") ||
+        serverMsg.toLowerCase().includes("videorequest")
+      ) {
+        setDeleteError(
+          `Cannot delete "${deletingCategory.name}": It is referenced by existing Video Requests. Foreign key constraints prevent physical deletion. Consider disabling the category instead.`
+        );
+      } else {
+        setDeleteError(serverMsg || "Failed to delete category");
+      }
     } finally {
       setActionLoading(false);
     }
@@ -312,7 +334,7 @@ export const Categories: React.FC = () => {
                             <span className="text-xs text-gray-400 italic font-medium">System Protected</span>
                           ) : (
                             <div className="flex items-center justify-end gap-2">
-                              {/* Edit Button */}
+                              {/* Edit Name Button (PATCH /api/v1/categories/:id) */}
                               <button
                                 onClick={() => {
                                   setEditingCategory(cat);
@@ -324,7 +346,7 @@ export const Categories: React.FC = () => {
                                 <Edit2 className="h-3.5 w-3.5" /> Edit
                               </button>
 
-                              {/* Toggle Status Button */}
+                              {/* Toggle Status Button (PATCH /api/v1/categories/:id/status) */}
                               <button
                                 onClick={() => handleToggleStatus(cat)}
                                 className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border transition ${
@@ -336,15 +358,16 @@ export const Categories: React.FC = () => {
                                 <Power className="h-3.5 w-3.5" /> {cat.isActive ? "Disable" : "Enable"}
                               </button>
 
-                              {/* DELETE / Deactivate Button */}
+                              {/* Hard Delete Button (DELETE /api/v1/categories/:id) */}
                               <button
                                 onClick={() => {
-                                  setDeactivatingCategory(cat);
-                                  setIsDeactivateModalOpen(true);
+                                  setDeletingCategory(cat);
+                                  setDeleteError(null);
+                                  setIsDeleteModalOpen(true);
                                 }}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition"
                               >
-                                <Trash2 className="h-3.5 w-3.5 text-red-600" /> Deactivate
+                                <Trash2 className="h-3.5 w-3.5 text-red-600" /> Delete
                               </button>
                             </div>
                           )}
@@ -465,7 +488,7 @@ export const Categories: React.FC = () => {
         </div>
       )}
 
-      {/* Create Category Modal */}
+      {/* 1. Create Category Modal (POST /api/v1/categories) */}
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create New Category">
         <form onSubmit={handleCreateCategory} className="space-y-4">
           <Input
@@ -489,8 +512,8 @@ export const Categories: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Edit Category Modal */}
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Category">
+      {/* 2. Edit Category Name Modal (PATCH /api/v1/categories/:id) */}
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Category Name">
         <form onSubmit={handleEditCategory} className="space-y-4">
           <Input
             id="editCategoryName"
@@ -501,6 +524,9 @@ export const Categories: React.FC = () => {
             onChange={(e) => setEditCategoryName(e.target.value)}
             disabled={actionLoading}
           />
+          <p className="text-xs text-gray-500">
+            Note: Updating the name will automatically update the category slug. Status (`isActive`) is controlled separately via Enable/Disable.
+          </p>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="ghost" onClick={() => setIsEditModalOpen(false)}>
               Cancel
@@ -512,21 +538,29 @@ export const Categories: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Soft Deactivate Category Confirmation Modal (DELETE /api/v1/categories/:id) */}
-      <Modal isOpen={isDeactivateModalOpen} onClose={() => setIsDeactivateModalOpen(false)} title="Soft-Deactivate Category">
+      {/* 4. Delete Category Modal (DELETE /api/v1/categories/:id) */}
+      <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Delete Category">
         <div className="space-y-4">
+          {deleteError && (
+            <div className="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-800 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <span>{deleteError}</span>
+            </div>
+          )}
+
           <p className="text-sm text-gray-600">
-            Are you sure you want to soft-deactivate category <strong className="text-gray-900">"{deactivatingCategory?.name}"</strong>?
+            Are you sure you want to permanently delete category <strong className="text-gray-900">"{deletingCategory?.name}"</strong>?
           </p>
-          <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
-            This issues an HTTP <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">DELETE /api/v1/categories/{deactivatingCategory?.id}</code> request to perform soft deactivation. The database record will not be physically deleted.
+          <div className="bg-red-50 border border-red-100 rounded p-3 text-xs text-red-700">
+            This issues an HTTP <code className="bg-red-100 px-1 py-0.5 rounded font-mono font-bold">DELETE /api/v1/categories/{deletingCategory?.id}</code> request to permanently delete the category record.
           </div>
+
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button type="button" variant="ghost" onClick={() => setIsDeactivateModalOpen(false)}>
+            <Button type="button" variant="ghost" onClick={() => setIsDeleteModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={handleConfirmDeactivate} isLoading={actionLoading}>
-              Deactivate Category
+            <Button type="button" variant="danger" onClick={handleConfirmDelete} isLoading={actionLoading}>
+              Permanently Delete
             </Button>
           </div>
         </div>

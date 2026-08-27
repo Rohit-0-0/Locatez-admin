@@ -1,80 +1,83 @@
 import { apiClient } from "./client";
 import { Category, CategorySuggestion } from "../types";
 
-// User-facing active categories feed
+/**
+ * User-facing active categories feed (GET /api/v1/categories)
+ */
 export const getCategories = async () => {
   const response = await apiClient.get<{ success: boolean; data: Category[] }>("/categories");
   return response.data;
 };
 
-// Admin categories list (includes active and inactive)
+/**
+ * Admin categories list including active & inactive (GET /api/v1/admin/categories)
+ */
 export const getAdminCategories = async (params?: any) => {
   const response = await apiClient.get<{ success: boolean; data: Category[] | { items: Category[]; pagination?: any } }>("/admin/categories", { params });
   return response.data;
 };
 
-// Create category
+/**
+ * 1. Create Category (POST /api/v1/categories)
+ * Body: { name: string }
+ */
 export const createCategory = async (data: { name: string }) => {
-  const response = await apiClient.post<{ success: boolean; data: Category }>("/categories", data);
+  const response = await apiClient.post<{ success: boolean; data: Category }>("/categories", {
+    name: data.name,
+  });
   return response.data;
 };
 
-// Edit category
+/**
+ * 2. Edit Category Name Only (PATCH /api/v1/categories/:id)
+ * Body: { name: string } - Slug generated/updated automatically by backend
+ */
 export const updateCategory = async (id: string, data: { name: string }) => {
-  const response = await apiClient.patch<{ success: boolean; data: Category }>(`/categories/${id}`, data);
+  const response = await apiClient.patch<{ success: boolean; data: Category }>(`/categories/${id}`, {
+    name: data.name,
+  });
   return response.data;
 };
 
-// Enable / Disable category status
+/**
+ * 3. Enable/Disable Category Status Only (PATCH /api/v1/categories/:id/status)
+ * Body: { isActive: boolean }
+ */
 export const updateCategoryStatus = async (id: string, isActive: boolean) => {
-  const response = await apiClient.patch<{ success: boolean; data: Category }>(`/categories/${id}/status`, { isActive });
+  const response = await apiClient.patch<{ success: boolean; data: Category }>(`/categories/${id}/status`, {
+    isActive,
+  });
   return response.data;
 };
 
-// Soft-deactivate category (DELETE /categories/:id with fallback to /admin/categories/:id)
+/**
+ * 4. Genuine Hard Delete Category (DELETE /api/v1/categories/:id)
+ */
 export const deleteCategory = async (id: string) => {
-  try {
-    const response = await apiClient.delete<{ success: boolean; data: Category }>(`/categories/${id}`);
-    return response.data;
-  } catch (err: any) {
-    if (err.response?.status === 404 || err.response?.status === 405) {
-      const response = await apiClient.delete<{ success: boolean; data: Category }>(`/admin/categories/${id}`);
-      return response.data;
-    }
-    throw err;
-  }
+  const response = await apiClient.delete<{ success: boolean; message?: string; data?: any }>(`/categories/${id}`);
+  return response.data;
 };
 
-// AI Category Suggestions list
+/**
+ * AI Category Suggestions List (GET /api/v1/admin/categories/suggestions)
+ */
 export const getCategorySuggestions = async (params?: any) => {
   const response = await apiClient.get<{ success: boolean; data: CategorySuggestion[] | { items: CategorySuggestion[]; pagination?: any } }>("/admin/categories/suggestions", { params });
   return response.data;
 };
 
-// Accept AI Category Suggestion
+/**
+ * Accept AI Category Suggestion (PATCH /api/v1/admin/categories/suggestions/:id/accept)
+ */
 export const acceptCategorySuggestion = async (id: string) => {
-  try {
-    const response = await apiClient.patch<{ success: boolean; data: CategorySuggestion }>(`/admin/categories/suggestions/${id}/accept`);
-    return response.data;
-  } catch (err: any) {
-    if (err.response?.status === 404 || err.response?.status === 405) {
-      const response = await apiClient.post<{ success: boolean; data: CategorySuggestion }>(`/admin/categories/suggestions/${id}/accept`);
-      return response.data;
-    }
-    throw err;
-  }
+  const response = await apiClient.patch<{ success: boolean; data: CategorySuggestion }>(`/admin/categories/suggestions/${id}/accept`);
+  return response.data;
 };
 
-// Reject AI Category Suggestion
+/**
+ * Reject AI Category Suggestion (PATCH /api/v1/admin/categories/suggestions/:id/reject)
+ */
 export const rejectCategorySuggestion = async (id: string) => {
-  try {
-    const response = await apiClient.patch<{ success: boolean; data: CategorySuggestion }>(`/admin/categories/suggestions/${id}/reject`);
-    return response.data;
-  } catch (err: any) {
-    if (err.response?.status === 404 || err.response?.status === 405) {
-      const response = await apiClient.post<{ success: boolean; data: CategorySuggestion }>(`/admin/categories/suggestions/${id}/reject`);
-      return response.data;
-    }
-    throw err;
-  }
+  const response = await apiClient.patch<{ success: boolean; data: CategorySuggestion }>(`/admin/categories/suggestions/${id}/reject`);
+  return response.data;
 };
