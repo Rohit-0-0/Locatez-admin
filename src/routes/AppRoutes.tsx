@@ -9,6 +9,8 @@ import { UserDetails } from "../pages/UserDetails";
 import { VideoRequests } from "../pages/VideoRequests";
 import { VideoRequestDetails } from "../pages/VideoRequestDetails";
 import { Categories } from "../pages/Categories";
+import { PopularPlacesFeed } from "../pages/PopularPlacesFeed";
+import { AdminPopularPlaces } from "../pages/AdminPopularPlaces";
 import { AuditLogs } from "../pages/AuditLogs";
 import { Settings } from "../pages/Settings";
 import { Unauthorized } from "../pages/Unauthorized";
@@ -18,7 +20,7 @@ import { useAuth } from "../context/AuthContext";
 const HomeRedirect: React.FC = () => {
   const { role } = useAuth();
   if (role === "USER") {
-    return <Navigate to="/chat-demo" replace />;
+    return <Navigate to="/popular-places" replace />;
   }
   return <Dashboard />;
 };
@@ -33,6 +35,7 @@ export const AppRoutes: React.FC = () => {
       <Route element={<ProtectedRoute allowedRoles={["ADMIN", "MODERATOR", "SUPERADMIN", "USER"]} />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<HomeRedirect />} />
+          <Route path="/popular-places" element={<PopularPlacesFeed />} />
           <Route path="/chat-demo" element={<LiveKitChatDemo />} />
         </Route>
       </Route>
@@ -45,6 +48,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="/video-requests" element={<VideoRequests />} />
           <Route path="/video-requests/:id" element={<VideoRequestDetails />} />
           <Route path="/categories" element={<Categories />} />
+          <Route path="/admin/popular-places" element={<AdminPopularPlaces />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />
         </Route>

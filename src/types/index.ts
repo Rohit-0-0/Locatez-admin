@@ -35,6 +35,41 @@ export interface CategorySuggestion {
   updatedAt: string;
 }
 
+export interface PopularPlace {
+  id: string;
+  name: string;
+  location: string;
+  description: string;
+  latitude: number;
+  longitude: number;
+  image: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreatePopularPlacePayload {
+  name: string;
+  location: string;
+  description: string;
+  latitude: number;
+  longitude: number;
+  image: string;
+}
+
+export interface UpdatePopularPlacePayload {
+  name?: string;
+  location?: string;
+  description?: string;
+  latitude?: number;
+  longitude?: number;
+  image?: string;
+}
+
+export interface UpdatePopularPlaceStatusPayload {
+  isActive: boolean;
+}
+
 export interface VideoRequest {
   id: string;
   title: string;

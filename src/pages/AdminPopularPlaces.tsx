@@ -1,0 +1,522 @@
+import React, { useEffect, useState } from "react";
+import {
+  getAdminPopularPlaces,
+  createPopularPlace,
+  updatePopularPlace,
+  updatePopularPlaceStatus,
+  uploadMedia,
+} from "../api/popularPlaces.api";
+import { PopularPlace } from "../types";
+import { Badge } from "../components/common/Badge";
+import { Button } from "../components/common/Button";
+import { Modal } from "../components/common/Modal";
+import { Input } from "../components/common/Input";
+import {
+  Compass,
+  Plus,
+  Edit2,
+  Power,
+  Upload,
+  MapPin,
+  Loader2,
+} from "lucide-react";
+
+export const AdminPopularPlaces: React.FC = () => {
+  const [places, setPlaces] = useState<PopularPlace[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Modals
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPlace, setEditingPlace] = useState<PopularPlace | null>(null);
+
+  // Form State
+  const [name, setName] = useState("");
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
+  const [latitude, setLatitude] = useState<number | "">("");
+  const [longitude, setLongitude] = useState<number | "">("");
+  const [imageUrl, setImageUrl] = useState("");
+
+  // Media Upload State
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const fetchPlaces = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getAdminPopularPlaces();
+      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
+      setPlaces(list);
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || "Failed to load admin popular places");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlaces();
+  }, []);
+
+  const resetForm = () => {
+    setName("");
+    setLocation("");
+    setDescription("");
+    setLatitude("");
+    setLongitude("");
+    setImageUrl("");
+    setEditingPlace(null);
+  };
+
+  const handleOpenCreate = () => {
+    resetForm();
+    setIsCreateModalOpen(true);
+  };
+
+  const handleOpenEdit = (place: PopularPlace) => {
+    setEditingPlace(place);
+    setName(place.name || "");
+    setLocation(place.location || "");
+    setDescription(place.description || "");
+    setLatitude(typeof place.latitude === "number" ? place.latitude : "");
+    setLongitude(typeof place.longitude === "number" ? place.longitude : "");
+    setImageUrl(place.image || "");
+    setIsEditModalOpen(true);
+  };
+
+  // Image Upload Handler using POST /api/v1/media/upload
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      console.log("[Media Upload] Uploading image file:", file.name);
+      const url = await uploadMedia(file);
+      console.log("[Media Upload] Received uploaded image URL:", url);
+      setImageUrl(url);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to upload image file.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // Form Validation
+  const validateForm = () => {
+    if (!name.trim()) return "Place name is required.";
+    if (!location.trim()) return "Location string is required.";
+    if (!description.trim()) return "Description is required.";
+    if (typeof latitude !== "number" || isNaN(latitude)) return "Valid latitude number is required.";
+    if (typeof longitude !== "number" || isNaN(longitude)) return "Valid longitude number is required.";
+    if (!imageUrl.trim()) return "Image is required (upload file or paste URL).";
+    return null;
+  };
+
+  // Create Submit Handler
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const valErr = validateForm();
+    if (valErr) {
+      alert(valErr);
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await createPopularPlace({
+        name: name.trim(),
+        location: location.trim(),
+        description: description.trim(),
+        latitude: latitude as number,
+        longitude: longitude as number,
+        image: imageUrl.trim(),
+      });
+      setIsCreateModalOpen(false);
+      resetForm();
+      fetchPlaces();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to create popular place.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Edit Submit Handler
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlace) return;
+
+    const valErr = validateForm();
+    if (valErr) {
+      alert(valErr);
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await updatePopularPlace(editingPlace.id, {
+        name: name.trim(),
+        location: location.trim(),
+        description: description.trim(),
+        latitude: latitude as number,
+        longitude: longitude as number,
+        image: imageUrl.trim(),
+      });
+      setIsEditModalOpen(false);
+      resetForm();
+      fetchPlaces();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to update popular place.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Enable / Disable Status Handler (PATCH /api/v1/admin/popular-places/:id/status)
+  const handleToggleStatus = async (place: PopularPlace) => {
+    const targetStatus = !place.isActive;
+    const actionText = targetStatus ? "enable" : "disable";
+
+    try {
+      await updatePopularPlaceStatus(place.id, targetStatus);
+      fetchPlaces();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || `Failed to ${actionText} popular place.`);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="sm:flex sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
+            <Compass className="h-6 w-6 text-primary" /> Popular Places Management
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Create, edit, and toggle active status of featured popular locations.
+          </p>
+        </div>
+        <Button onClick={handleOpenCreate} className="mt-4 sm:mt-0 flex items-center gap-1.5">
+          <Plus className="h-4 w-4" /> Add Popular Place
+        </Button>
+      </div>
+
+      {/* Main Content Area */}
+      {error ? (
+        <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">{error}</div>
+      ) : loading ? (
+        <div className="flex justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+        </div>
+      ) : places.length === 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 space-y-3">
+          <Compass className="h-10 w-10 mx-auto text-gray-400" />
+          <p className="text-base font-medium text-gray-900">No popular places configured</p>
+          <p className="text-xs">Click "Add Popular Place" above to create the first featured location.</p>
+        </div>
+      ) : (
+        <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+          <table className="min-w-full divide-y divide-gray-300">
+            <thead className="bg-gray-50">
+              <tr>
+                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                  Place
+                </th>
+                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  Location
+                </th>
+                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  Coordinates
+                </th>
+                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  Status
+                </th>
+                <th scope="col" className="relative py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-6">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 bg-white">
+              {places.map((place) => (
+                <tr key={place.id}>
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border">
+                        <img
+                          src={place.image}
+                          alt={place.name}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=100&q=80";
+                          }}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900">{place.name}</p>
+                        <p className="text-xs text-gray-500 line-clamp-1 max-w-xs">{place.description}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+                    <div className="flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                      <span>{place.location}</span>
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500 font-mono">
+                    {place.latitude}, {place.longitude}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    {place.isActive ? (
+                      <Badge variant="success">ACTIVE</Badge>
+                    ) : (
+                      <Badge variant="default" className="bg-gray-100 text-gray-600">INACTIVE</Badge>
+                    )}
+                  </td>
+                  <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => handleOpenEdit(place)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 transition"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" /> Edit
+                      </button>
+
+                      <button
+                        onClick={() => handleToggleStatus(place)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border transition ${
+                          place.isActive
+                            ? "text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100"
+                            : "text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
+                        }`}
+                      >
+                        <Power className="h-3.5 w-3.5" /> {place.isActive ? "Disable" : "Enable"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Create Modal */}
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Add Popular Place">
+        <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <Input
+            id="create-name"
+            type="text"
+            label="Place Name"
+            placeholder="e.g. Marine Drive"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={actionLoading}
+          />
+
+          <Input
+            id="create-location"
+            type="text"
+            label="Location"
+            placeholder="e.g. Mumbai, Maharashtra"
+            required
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            disabled={actionLoading}
+          />
+
+          <div>
+            <label htmlFor="create-desc" className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              id="create-desc"
+              rows={3}
+              required
+              className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Describe what makes this place popular for live video requests..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={actionLoading}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="create-lat"
+              type="number"
+              step="any"
+              label="Latitude"
+              placeholder="18.9432"
+              required
+              value={latitude}
+              onChange={(e) => setLatitude(e.target.value ? parseFloat(e.target.value) : "")}
+              disabled={actionLoading}
+            />
+            <Input
+              id="create-lng"
+              type="number"
+              step="any"
+              label="Longitude"
+              placeholder="72.8236"
+              required
+              value={longitude}
+              onChange={(e) => setLongitude(e.target.value ? parseFloat(e.target.value) : "")}
+              disabled={actionLoading}
+            />
+          </div>
+
+          {/* Image Upload Area */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Place Image</label>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-md shadow-xs flex items-center gap-1.5 transition">
+                  {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Upload className="h-4 w-4 text-primary" />}
+                  <span>Upload Image File</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={uploadingImage || actionLoading} />
+                </label>
+                <span className="text-xs text-gray-400">or paste URL below</span>
+              </div>
+
+              <Input
+                id="create-image-url"
+                type="text"
+                placeholder="https://images.unsplash.com/..."
+                required
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                disabled={actionLoading}
+              />
+
+              {imageUrl && (
+                <div className="relative h-32 w-full rounded-lg overflow-hidden border bg-gray-50">
+                  <img src={imageUrl} alt="Preview" className="h-full w-full object-cover" />
+                  <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded font-mono">Image Preview</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={actionLoading} disabled={uploadingImage}>
+              Create Popular Place
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Popular Place">
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <Input
+            id="edit-name"
+            type="text"
+            label="Place Name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={actionLoading}
+          />
+
+          <Input
+            id="edit-location"
+            type="text"
+            label="Location"
+            required
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            disabled={actionLoading}
+          />
+
+          <div>
+            <label htmlFor="edit-desc" className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              id="edit-desc"
+              rows={3}
+              required
+              className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={actionLoading}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="edit-lat"
+              type="number"
+              step="any"
+              label="Latitude"
+              required
+              value={latitude}
+              onChange={(e) => setLatitude(e.target.value ? parseFloat(e.target.value) : "")}
+              disabled={actionLoading}
+            />
+            <Input
+              id="edit-lng"
+              type="number"
+              step="any"
+              label="Longitude"
+              required
+              value={longitude}
+              onChange={(e) => setLongitude(e.target.value ? parseFloat(e.target.value) : "")}
+              disabled={actionLoading}
+            />
+          </div>
+
+          {/* Image Upload Area */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Place Image</label>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-md shadow-xs flex items-center gap-1.5 transition">
+                  {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Upload className="h-4 w-4 text-primary" />}
+                  <span>Upload Image File</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={uploadingImage || actionLoading} />
+                </label>
+                <span className="text-xs text-gray-400">or paste URL below</span>
+              </div>
+
+              <Input
+                id="edit-image-url"
+                type="text"
+                required
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                disabled={actionLoading}
+              />
+
+              {imageUrl && (
+                <div className="relative h-32 w-full rounded-lg overflow-hidden border bg-gray-50">
+                  <img src={imageUrl} alt="Preview" className="h-full w-full object-cover" />
+                  <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded font-mono">Image Preview</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={actionLoading} disabled={uploadingImage}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+};
