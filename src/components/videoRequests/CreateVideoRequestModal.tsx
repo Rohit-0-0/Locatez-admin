@@ -106,7 +106,18 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
       onSuccess?.();
       onClose();
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to create video request");
+      const errCode = err.response?.data?.code || err.response?.data?.errorCode;
+      const errMsg = err.response?.data?.message || err.message || "";
+
+      if (errCode === "SERVICE_AREA_RESTRICTED" || errMsg.includes("SERVICE_AREA_RESTRICTED")) {
+        const availableAreas = err.response?.data?.availableAreas || err.response?.data?.data?.availableAreas;
+        const areasListText = Array.isArray(availableAreas) && availableAreas.length > 0
+          ? ` Available areas: ${availableAreas.map((a: any) => (typeof a === "string" ? a : a.name)).join(", ")}.`
+          : "";
+        alert(`Locatez is currently available only in selected service areas.${areasListText}`);
+      } else {
+        alert(errMsg || "Failed to create video request");
+      }
     } finally {
       setLoading(false);
     }

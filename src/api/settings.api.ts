@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { ServiceAreaSettings, ServiceAreaMode, ServiceArea } from "../types";
 
 export interface VideoRequestSettings {
   requireApprovalForAll: boolean;
@@ -61,4 +62,60 @@ export const updateChatSettings = async (preAcceptanceMessageLimit: number): Pro
     return resData.data as ChatSettings;
   }
   return { preAcceptanceMessageLimit };
+};
+
+/**
+ * Service Area Restriction System API (ADMIN ONLY)
+ * GET /api/v1/admin/service-area
+ * PATCH /api/v1/admin/service-area
+ */
+export const getServiceAreaSettings = async (): Promise<ServiceAreaSettings> => {
+  const response = await apiClient.get<ServiceAreaSettings | { success: boolean; data: ServiceAreaSettings }>("/admin/service-area");
+  const resData = response.data as any;
+
+  if (resData && (resData.mode === "PAN_INDIA" || resData.mode === "RESTRICTED")) {
+    return {
+      mode: resData.mode,
+      areas: Array.isArray(resData.areas) ? resData.areas : [],
+    };
+  }
+
+  if (resData && resData.data && (resData.data.mode === "PAN_INDIA" || resData.data.mode === "RESTRICTED")) {
+    return {
+      mode: resData.data.mode,
+      areas: Array.isArray(resData.data.areas) ? resData.data.areas : [],
+    };
+  }
+
+  throw new Error("Invalid response format from service area API");
+};
+
+export const updateServiceAreaSettings = async (payload: {
+  mode: ServiceAreaMode;
+  areas?: { id: string; enabled: boolean }[] | ServiceArea[];
+}): Promise<ServiceAreaSettings> => {
+  const response = await apiClient.patch<ServiceAreaSettings | { success: boolean; data: ServiceAreaSettings }>(
+    "/admin/service-area",
+    payload
+  );
+  const resData = response.data as any;
+
+  if (resData && (resData.mode === "PAN_INDIA" || resData.mode === "RESTRICTED")) {
+    return {
+      mode: resData.mode,
+      areas: Array.isArray(resData.areas) ? resData.areas : [],
+    };
+  }
+
+  if (resData && resData.data && (resData.data.mode === "PAN_INDIA" || resData.data.mode === "RESTRICTED")) {
+    return {
+      mode: resData.data.mode,
+      areas: Array.isArray(resData.data.areas) ? resData.data.areas : [],
+    };
+  }
+
+  return {
+    mode: payload.mode,
+    areas: (payload.areas as any) || [],
+  };
 };

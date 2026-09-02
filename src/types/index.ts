@@ -243,4 +243,20 @@ export interface GetIdeasParams {
   search?: string;
 }
 
+export type ServiceAreaMode = "PAN_INDIA" | "RESTRICTED";
+
+export interface ServiceArea {
+  id: string;
+  name: string;
+  countryCode: string;
+  enabled: boolean;
+  geometry?: any;
+}
+
+export interface ServiceAreaSettings {
+  mode: ServiceAreaMode;
+  areas: ServiceArea[];
+}
+
+
 

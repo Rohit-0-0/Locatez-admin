@@ -6,11 +6,14 @@ import {
   updateVideoRequestSettings,
   getChatSettings,
   updateChatSettings,
+  getServiceAreaSettings,
+  updateServiceAreaSettings,
 } from "../api/settings.api";
+import { ServiceAreaSettings, ServiceAreaMode, ServiceArea } from "../types";
 import { Switch } from "../components/common/Switch";
 import { Modal } from "../components/common/Modal";
 import { Button } from "../components/common/Button";
-import { Shield, Info, CheckCircle2, XCircle, AlertTriangle, MessageSquare } from "lucide-react";
+import { Shield, Info, CheckCircle2, XCircle, AlertTriangle, MessageSquare, Globe, MapPin } from "lucide-react";
 
 export const Settings: React.FC = () => {
   const { role } = useAuth();
@@ -26,6 +29,13 @@ export const Settings: React.FC = () => {
   const [chatLimitInput, setChatLimitInput] = useState<string>("");
   const [chatValidationError, setChatValidationError] = useState<string | null>(null);
 
+  // Service Area Settings State
+  const [serviceAreaSettings, setServiceAreaSettings] = useState<ServiceAreaSettings | null>(null);
+  const [pendingMode, setPendingMode] = useState<ServiceAreaMode>("PAN_INDIA");
+  const [pendingAreas, setPendingAreas] = useState<ServiceArea[]>([]);
+  const [serviceAreaSaving, setServiceAreaSaving] = useState<boolean>(false);
+  const [serviceAreaError, setServiceAreaError] = useState<string | null>(null);
+
   // General Loading & Action States
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
@@ -36,13 +46,22 @@ export const Settings: React.FC = () => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState<boolean>(false);
   const [pendingValue, setPendingValue] = useState<boolean>(false);
 
+  // Confirmation Modal state for Service Area Mode Switch
+  const [isServiceAreaModalOpen, setIsServiceAreaModalOpen] = useState<boolean>(false);
+  const [targetMode, setTargetMode] = useState<ServiceAreaMode | null>(null);
+
   const fetchSettings = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [vrData, chatData] = await Promise.all([
+      const [vrData, chatData, saData] = await Promise.all([
         getVideoRequestSettings(),
         getChatSettings(),
+        getServiceAreaSettings().catch((saErr) => {
+          console.warn("Failed to load service area settings", saErr);
+          setServiceAreaError(saErr.response?.data?.message || saErr.message || "Failed to load service area configuration.");
+          return null;
+        }),
       ]);
 
       setRequireApproval(!!vrData.requireApprovalForAll);
@@ -52,6 +71,12 @@ export const Settings: React.FC = () => {
         : 50;
       setConfirmedChatLimit(limit);
       setChatLimitInput(limit.toString());
+
+      if (saData) {
+        setServiceAreaSettings(saData);
+        setPendingMode(saData.mode);
+        setPendingAreas(saData.areas || []);
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || err.message || "Failed to load settings");
     } finally {
@@ -162,12 +187,67 @@ export const Settings: React.FC = () => {
     !chatLimitInput ||
     parseInt(chatLimitInput, 10) === confirmedChatLimit;
 
+  // Service Area Handlers
+  const handleModeClick = (newMode: ServiceAreaMode) => {
+    if (!isAdmin || serviceAreaSaving || newMode === pendingMode) return;
+    setTargetMode(newMode);
+    setIsServiceAreaModalOpen(true);
+  };
+
+  const handleConfirmModeChange = () => {
+    if (targetMode) {
+      setPendingMode(targetMode);
+    }
+    setIsServiceAreaModalOpen(false);
+    setTargetMode(null);
+  };
+
+  const handleAreaToggle = (areaId: string, enabled: boolean) => {
+    if (!isAdmin || serviceAreaSaving) return;
+    setPendingAreas((prev) =>
+      prev.map((a) => (a.id === areaId ? { ...a, enabled } : a))
+    );
+  };
+
+  const handleSaveServiceAreaSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin || serviceAreaSaving) return;
+
+    setServiceAreaSaving(true);
+    setServiceAreaError(null);
+    try {
+      const payload = {
+        mode: pendingMode,
+        areas: pendingAreas.map((a) => ({ id: a.id, enabled: a.enabled })),
+      };
+      const updated = await updateServiceAreaSettings(payload);
+      setServiceAreaSettings(updated);
+      setPendingMode(updated.mode);
+      setPendingAreas(updated.areas || []);
+      toast.success("Service area settings saved successfully.");
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || err.message || "Failed to save service area settings.";
+      setServiceAreaError(errMsg);
+      toast.error(errMsg);
+    } finally {
+      setServiceAreaSaving(false);
+    }
+  };
+
+  const isServiceAreaSaveDisabled =
+    !isAdmin ||
+    serviceAreaSaving ||
+    !serviceAreaSettings ||
+    (pendingMode === serviceAreaSettings.mode &&
+      JSON.stringify(pendingAreas.map((a) => ({ id: a.id, enabled: a.enabled }))) ===
+        JSON.stringify(serviceAreaSettings.areas.map((a) => ({ id: a.id, enabled: a.enabled }))));
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Admin Settings</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Manage global administrative preferences, video request policies, and chat settings.
+          Manage global administrative preferences, video request policies, service area availability, and chat settings.
         </p>
       </div>
 
@@ -199,6 +279,151 @@ export const Settings: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Service Area / Marketplace Availability Section */}
+          <div className="bg-white shadow sm:rounded-lg border border-gray-200 overflow-hidden">
+            {/* Section Header */}
+            <div className="px-6 py-5 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-medium text-gray-900">Service Area (Marketplace Availability)</h2>
+            </div>
+
+            {/* Section Content */}
+            <div className="p-6 space-y-6">
+              {serviceAreaError && (
+                <div className="rounded-md bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+                  {serviceAreaError}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveServiceAreaSettings} className="space-y-6">
+                {/* Mode Selector */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-900">
+                    Marketplace Availability Mode
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+                    <button
+                      type="button"
+                      disabled={!isAdmin || serviceAreaSaving}
+                      onClick={() => handleModeClick("PAN_INDIA")}
+                      className={`flex items-center justify-between p-4 rounded-lg border text-left transition ${
+                        pendingMode === "PAN_INDIA"
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900">Pan India</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Available across India</p>
+                      </div>
+                      <div
+                        className={`h-4 w-4 rounded-full border flex items-center justify-center ${
+                          pendingMode === "PAN_INDIA" ? "border-primary bg-primary" : "border-gray-300"
+                        }`}
+                      >
+                        {pendingMode === "PAN_INDIA" && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!isAdmin || serviceAreaSaving}
+                      onClick={() => handleModeClick("RESTRICTED")}
+                      className={`flex items-center justify-between p-4 rounded-lg border text-left transition ${
+                        pendingMode === "RESTRICTED"
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900">Restricted Areas</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Available only in selected areas</p>
+                      </div>
+                      <div
+                        className={`h-4 w-4 rounded-full border flex items-center justify-center ${
+                          pendingMode === "RESTRICTED" ? "border-primary bg-primary" : "border-gray-300"
+                        }`}
+                      >
+                        {pendingMode === "RESTRICTED" && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mode Informational Text & Service Areas List */}
+                {pendingMode === "PAN_INDIA" ? (
+                  <div className="rounded-lg bg-blue-50/70 p-4 border border-blue-200/80 flex items-center gap-3 text-xs text-blue-900">
+                    <Info className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                    <span>Locatez is available across India.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-lg bg-amber-50 p-4 border border-amber-200/80 flex items-center gap-3 text-xs text-amber-900">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                      <span>Locatez is available only in selected service areas.</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-medium text-gray-900">Active Service Areas</h3>
+                      {pendingAreas.length === 0 ? (
+                        <p className="text-xs text-gray-500 italic p-3 bg-gray-50 rounded border">
+                          No service areas configured on server.
+                        </p>
+                      ) : (
+                        <div className="divide-y divide-gray-200 border rounded-lg overflow-hidden bg-white">
+                          {pendingAreas.map((area) => (
+                            <div key={area.id} className="p-4 flex items-center justify-between gap-4 hover:bg-gray-50/50 transition">
+                              <div className="flex items-center gap-3">
+                                <MapPin className="h-4 w-4 text-primary shrink-0" />
+                                <div>
+                                  <p className="font-semibold text-sm text-gray-900">{area.name}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {area.countryCode === "IN" ? "India" : area.countryCode}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <span className={`text-xs font-medium ${area.enabled ? "text-green-700" : "text-gray-400"}`}>
+                                  {area.enabled ? "Enabled" : "Disabled"}
+                                </span>
+                                <Switch
+                                  id={`area-switch-${area.id}`}
+                                  checked={area.enabled}
+                                  onChange={(val) => handleAreaToggle(area.id, val)}
+                                  disabled={!isAdmin || serviceAreaSaving}
+                                  label={`Toggle ${area.name} service area`}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!isAdmin && (
+                  <p className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded inline-block font-medium">
+                    Note: As a Moderator, you can view service area configuration but cannot modify it.
+                  </p>
+                )}
+
+                {/* Save Button */}
+                <div className="pt-2 flex justify-end">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    isLoading={serviceAreaSaving}
+                    disabled={isServiceAreaSaveDisabled}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+
           {/* Video Requests Section */}
           <div className="bg-white shadow sm:rounded-lg border border-gray-200 overflow-hidden">
             {/* Section Header */}
@@ -355,7 +580,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* Confirmation Modal */}
+      {/* Confirmation Modal for Video Request Approval */}
       <Modal
         isOpen={isConfirmModalOpen}
         onClose={() => !actionLoading && setIsConfirmModalOpen(false)}
@@ -384,6 +609,48 @@ export const Settings: React.FC = () => {
               isLoading={actionLoading}
             >
               Confirm
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Mode Switch Safety Confirmation Modal */}
+      <Modal
+        isOpen={isServiceAreaModalOpen}
+        onClose={() => !serviceAreaSaving && setIsServiceAreaModalOpen(false)}
+        title={
+          targetMode === "RESTRICTED"
+            ? "Enable restricted service areas?"
+            : "Enable Pan India availability?"
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-900">
+            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">
+                {targetMode === "RESTRICTED"
+                  ? "Users will only be able to create and fulfill requests inside the enabled service areas."
+                  : "Marketplace location restrictions will be disabled."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => setIsServiceAreaModalOpen(false)}
+              disabled={serviceAreaSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              onClick={handleConfirmModeChange}
+            >
+              {targetMode === "RESTRICTED" ? "Enable Restrictions" : "Enable Pan India"}
             </Button>
           </div>
         </div>
