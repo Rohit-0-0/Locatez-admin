@@ -51,7 +51,9 @@ export const AppRoutes: React.FC = () => {
           <Route path="/video-requests/:id" element={<VideoRequestDetails />} />
           <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/categories" element={<Categories />} />
+          <Route path="/ideas" element={<Ideas />} />
           <Route path="/admin/ideas" element={<Ideas />} />
+          <Route path="/popular-places-admin" element={<Navigate to="/admin/popular-places" replace />} />
           <Route path="/admin/popular-places" element={<AdminPopularPlaces />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />
