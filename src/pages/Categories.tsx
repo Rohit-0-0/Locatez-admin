@@ -222,28 +222,28 @@ export const Categories: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="sm:flex sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
-            <Tag className="h-6 w-6 text-primary" /> Category Management
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 flex items-center gap-2">
+            <Tag className="h-6 w-6 text-primary flex-shrink-0" /> Category Management
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-xs sm:text-sm text-gray-500">
             Manage system request categories and review AI category suggestions.
           </p>
         </div>
         {activeTab === "categories" && (
-          <Button onClick={() => setIsCreateModalOpen(true)} className="mt-4 sm:mt-0 flex items-center gap-1.5">
+          <Button onClick={() => setIsCreateModalOpen(true)} className="self-start sm:self-auto flex items-center gap-1.5 shrink-0">
             <Plus className="h-4 w-4" /> Create Category
           </Button>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+      <div className="border-b border-gray-200 overflow-x-auto">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 min-w-max">
           <button
             onClick={() => setActiveTab("categories")}
-            className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition ${
+            className={`py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center gap-2 transition ${
               activeTab === "categories"
                 ? "border-primary text-primary font-semibold"
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -253,7 +253,7 @@ export const Categories: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab("suggestions")}
-            className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition ${
+            className={`py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center gap-2 transition ${
               activeTab === "suggestions"
                 ? "border-primary text-primary font-semibold"
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -280,7 +280,7 @@ export const Categories: React.FC = () => {
               <p className="text-xs">Click "Create Category" above to add the first category.</p>
             </div>
           ) : (
-            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+            <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
@@ -409,7 +409,7 @@ export const Categories: React.FC = () => {
               <p className="text-xs text-gray-400">All AI-suggested categories have been moderated.</p>
             </div>
           ) : (
-            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+            <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>

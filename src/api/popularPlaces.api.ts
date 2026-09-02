@@ -59,6 +59,17 @@ export const updatePopularPlaceStatus = async (id: string, isActive: boolean) =>
 };
 
 /**
+ * Admin delete Popular Place (DELETE /api/v1/admin/popular-places/:id)
+ */
+export const deletePopularPlace = async (id: string) => {
+  const response = await apiClient.delete<{ success?: boolean; message?: string }>(
+    `/admin/popular-places/${id}`
+  );
+  return response.data;
+};
+
+
+/**
  * Media File Upload (POST /api/v1/media/upload)
  */
 export const uploadMedia = async (file: File): Promise<string> => {

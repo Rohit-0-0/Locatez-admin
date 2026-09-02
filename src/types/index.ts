@@ -162,3 +162,85 @@ export interface ChatMessage {
   type?: "TEXT" | "IMAGE" | "SYSTEM" | string;
   createdAt: string;
 }
+
+export type MarketplaceStatus = "DRAFT" | "PUBLISHED" | "ENDED" | "EXPIRED" | "CANCELLED";
+
+export interface MarketplaceStream {
+  id: string;
+  title: string;
+  description?: string | null;
+  price: number;
+  thumbnailUrl?: string | null;
+  durationSeconds?: number | null;
+  expiresAt?: string | null;
+  status: MarketplaceStatus;
+  creator?: {
+    id: string;
+    username: string;
+    fullName?: string | null;
+    profilePhotoUrl?: string | null;
+  };
+  customLocation?: {
+    address: string;
+    latitude: number;
+    longitude: number;
+  } | null;
+  category?: {
+    id: string | null;
+    name: string;
+  } | null;
+  isOwner?: boolean;
+  isPurchased?: boolean;
+  purchaseCount?: number;
+  createdAt: string;
+}
+
+export interface MarketplacePurchase {
+  id: string;
+  amount: number;
+  purchasedAt: string;
+  isAccessible?: boolean;
+  listing?: MarketplaceStream;
+}
+
+export interface Idea {
+  id: string;
+  title: string;
+  content: string;
+  imageKey: string;
+  imageUrl?: string;
+  placeName: string;
+  city: string;
+  state: string;
+  categoryId: string;
+  category?: Category | { id: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateIdeaPayload {
+  title: string;
+  content: string;
+  imageKey: string;
+  placeName: string;
+  city: string;
+  state: string;
+  categoryId: string;
+}
+
+export interface UpdateIdeaPayload {
+  title?: string;
+  content?: string;
+  imageKey?: string;
+  placeName?: string;
+  city?: string;
+  state?: string;
+  categoryId?: string;
+}
+
+export interface GetIdeasParams {
+  categoryId?: string;
+  search?: string;
+}
+
+

@@ -48,14 +48,14 @@ export const AuditLogs: React.FC = () => {
     <div className="space-y-6">
       <div className="sm:flex sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Audit Logs</h1>
-          <p className="mt-2 text-sm text-gray-700">Track activities and changes across the platform.</p>
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Audit Logs</h1>
+          <p className="mt-1 text-xs sm:text-sm text-gray-700">Track activities and changes across the platform.</p>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 mb-4">
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <select
-          className="block w-48 rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
+          className="block w-full sm:w-48 rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
           value={actionFilter}
           onChange={(e) => {
             setActionFilter(e.target.value);
@@ -74,7 +74,7 @@ export const AuditLogs: React.FC = () => {
         <input
           type="text"
           placeholder="Entity Type (e.g., USER)"
-          className="block w-48 rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6"
+          className="block w-full sm:w-48 rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6"
           value={entityTypeFilter}
           onChange={(e) => {
             setEntityTypeFilter(e.target.value);
@@ -90,7 +90,7 @@ export const AuditLogs: React.FC = () => {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
         </div>
       ) : (
-        <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+        <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
           <table className="min-w-full divide-y divide-gray-300">
             <thead className="bg-gray-50">
               <tr>

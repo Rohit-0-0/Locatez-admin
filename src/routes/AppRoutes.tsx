@@ -9,10 +9,12 @@ import { UserDetails } from "../pages/UserDetails";
 import { VideoRequests } from "../pages/VideoRequests";
 import { VideoRequestDetails } from "../pages/VideoRequestDetails";
 import { Categories } from "../pages/Categories";
+import { Ideas } from "../pages/Ideas";
 import { PopularPlacesFeed } from "../pages/PopularPlacesFeed";
 import { AdminPopularPlaces } from "../pages/AdminPopularPlaces";
 import { AuditLogs } from "../pages/AuditLogs";
 import { Settings } from "../pages/Settings";
+import { Marketplace } from "../pages/Marketplace";
 import { Unauthorized } from "../pages/Unauthorized";
 import { LiveKitChatDemo } from "../pages/LiveKitChatDemo";
 import { useAuth } from "../context/AuthContext";
@@ -47,7 +49,9 @@ export const AppRoutes: React.FC = () => {
           <Route path="/users/:id" element={<UserDetails />} />
           <Route path="/video-requests" element={<VideoRequests />} />
           <Route path="/video-requests/:id" element={<VideoRequestDetails />} />
+          <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/categories" element={<Categories />} />
+          <Route path="/admin/ideas" element={<Ideas />} />
           <Route path="/admin/popular-places" element={<AdminPopularPlaces />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />

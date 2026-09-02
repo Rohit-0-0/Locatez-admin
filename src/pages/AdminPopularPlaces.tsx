@@ -4,6 +4,7 @@ import {
   createPopularPlace,
   updatePopularPlace,
   updatePopularPlaceStatus,
+  deletePopularPlace,
   uploadMedia,
 } from "../api/popularPlaces.api";
 import { PopularPlace } from "../types";
@@ -11,14 +12,17 @@ import { Badge } from "../components/common/Badge";
 import { Button } from "../components/common/Button";
 import { Modal } from "../components/common/Modal";
 import { Input } from "../components/common/Input";
+import { MapboxLocationPicker } from "../components/common/MapboxLocationPicker";
 import {
   Compass,
   Plus,
   Edit2,
   Power,
+  Trash2,
   Upload,
   MapPin,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 
 export const AdminPopularPlaces: React.FC = () => {
@@ -29,7 +33,10 @@ export const AdminPopularPlaces: React.FC = () => {
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState<PopularPlace | null>(null);
+  const [deletingPlace, setDeletingPlace] = useState<PopularPlace | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Form State
   const [name, setName] = useState("");
@@ -105,13 +112,17 @@ export const AdminPopularPlaces: React.FC = () => {
     }
   };
 
-  // Form Validation
+  // Coordinates & Form Validation
   const validateForm = () => {
     if (!name.trim()) return "Place name is required.";
-    if (!location.trim()) return "Location string is required.";
+    if (!location.trim()) return "Location address is required.";
     if (!description.trim()) return "Description is required.";
-    if (typeof latitude !== "number" || isNaN(latitude)) return "Valid latitude number is required.";
-    if (typeof longitude !== "number" || isNaN(longitude)) return "Valid longitude number is required.";
+    if (typeof latitude !== "number" || isNaN(latitude) || latitude < -90 || latitude > 90) {
+      return "Please select a location on the map to set a valid latitude (-90 to 90).";
+    }
+    if (typeof longitude !== "number" || isNaN(longitude) || longitude < -180 || longitude > 180) {
+      return "Please select a location on the map to set a valid longitude (-180 to 180).";
+    }
     if (!imageUrl.trim()) return "Image is required (upload file or paste URL).";
     return null;
   };
@@ -189,24 +200,58 @@ export const AdminPopularPlaces: React.FC = () => {
     }
   };
 
+  // Open Delete Confirmation Modal
+  const handleOpenDelete = (place: PopularPlace) => {
+    setDeletingPlace(place);
+    setDeleteError(null);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Confirm Delete Handler (DELETE /api/v1/admin/popular-places/:id)
+  const handleConfirmDelete = async () => {
+    if (!deletingPlace) return;
+    setActionLoading(true);
+    setDeleteError(null);
+    try {
+      await deletePopularPlace(deletingPlace.id);
+      setIsDeleteModalOpen(false);
+      setDeletingPlace(null);
+      fetchPlaces();
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.message || err.message || "Failed to delete popular place.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const isCoordinatesValid =
+    typeof latitude === "number" &&
+    !isNaN(latitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    typeof longitude === "number" &&
+    !isNaN(longitude) &&
+    longitude >= -180 &&
+    longitude <= 180;
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="sm:flex sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
-            <Compass className="h-6 w-6 text-primary" /> Popular Places Management
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 flex items-center gap-2">
+            <Compass className="h-6 w-6 text-primary flex-shrink-0" /> Popular Places Management
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Create, edit, and toggle active status of featured popular locations.
+          <p className="mt-1 text-xs sm:text-sm text-gray-500">
+            Create, edit, and toggle active status of featured popular locations with Mapbox location selection.
           </p>
         </div>
-        <Button onClick={handleOpenCreate} className="mt-4 sm:mt-0 flex items-center gap-1.5">
+        <Button onClick={handleOpenCreate} className="self-start sm:self-auto flex items-center gap-1.5 shrink-0">
           <Plus className="h-4 w-4" /> Add Popular Place
         </Button>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content Table */}
       {error ? (
         <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">{error}</div>
       ) : loading ? (
@@ -220,18 +265,18 @@ export const AdminPopularPlaces: React.FC = () => {
           <p className="text-xs">Click "Add Popular Place" above to create the first featured location.</p>
         </div>
       ) : (
-        <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+        <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
           <table className="min-w-full divide-y divide-gray-300">
             <thead className="bg-gray-50">
               <tr>
                 <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
-                  Place
+                  Place Name
                 </th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                  Location
+                  Location Address
                 </th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                  Coordinates
+                  Map Coordinates
                 </th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                   Status
@@ -265,11 +310,12 @@ export const AdminPopularPlaces: React.FC = () => {
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
                     <div className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                      <span>{place.location}</span>
+                      <span className="truncate max-w-xs">{place.location}</span>
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500 font-mono">
-                    {place.latitude}, {place.longitude}
+                    {typeof place.latitude === "number" ? place.latitude.toFixed(4) : place.latitude},{" "}
+                    {typeof place.longitude === "number" ? place.longitude.toFixed(4) : place.longitude}
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                     {place.isActive ? (
@@ -297,6 +343,13 @@ export const AdminPopularPlaces: React.FC = () => {
                       >
                         <Power className="h-3.5 w-3.5" /> {place.isActive ? "Disable" : "Enable"}
                       </button>
+
+                      <button
+                        onClick={() => handleOpenDelete(place)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -308,27 +361,29 @@ export const AdminPopularPlaces: React.FC = () => {
 
       {/* Create Modal */}
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Add Popular Place">
-        <form onSubmit={handleCreateSubmit} className="space-y-4">
+        <form onSubmit={handleCreateSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+          {/* Independent Place Name Field */}
           <Input
             id="create-name"
             type="text"
-            label="Place Name"
-            placeholder="e.g. Marine Drive"
+            label="Popular Place Name"
+            placeholder="e.g. Rajwada Palace, Marine Drive"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={actionLoading}
           />
 
-          <Input
-            id="create-location"
-            type="text"
-            label="Location"
-            placeholder="e.g. Mumbai, Maharashtra"
-            required
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            disabled={actionLoading}
+          {/* Mapbox Location Selector (derive address & lat/lng, keeping name independent) */}
+          <MapboxLocationPicker
+            location={location}
+            onLocationChange={setLocation}
+            latitude={latitude}
+            longitude={longitude}
+            onCoordinatesChange={(lat, lng) => {
+              setLatitude(lat);
+              setLongitude(lng);
+            }}
           />
 
           <div>
@@ -343,31 +398,6 @@ export const AdminPopularPlaces: React.FC = () => {
               placeholder="Describe what makes this place popular for live video requests..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              disabled={actionLoading}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              id="create-lat"
-              type="number"
-              step="any"
-              label="Latitude"
-              placeholder="18.9432"
-              required
-              value={latitude}
-              onChange={(e) => setLatitude(e.target.value ? parseFloat(e.target.value) : "")}
-              disabled={actionLoading}
-            />
-            <Input
-              id="create-lng"
-              type="number"
-              step="any"
-              label="Longitude"
-              placeholder="72.8236"
-              required
-              value={longitude}
-              onChange={(e) => setLongitude(e.target.value ? parseFloat(e.target.value) : "")}
               disabled={actionLoading}
             />
           </div>
@@ -404,11 +434,11 @@ export const AdminPopularPlaces: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t">
+          <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white">
             <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" isLoading={actionLoading} disabled={uploadingImage}>
+            <Button type="submit" isLoading={actionLoading} disabled={uploadingImage || !isCoordinatesValid}>
               Create Popular Place
             </Button>
           </div>
@@ -417,25 +447,28 @@ export const AdminPopularPlaces: React.FC = () => {
 
       {/* Edit Modal */}
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Popular Place">
-        <form onSubmit={handleEditSubmit} className="space-y-4">
+        <form onSubmit={handleEditSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+          {/* Independent Place Name Field */}
           <Input
             id="edit-name"
             type="text"
-            label="Place Name"
+            label="Popular Place Name"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={actionLoading}
           />
 
-          <Input
-            id="edit-location"
-            type="text"
-            label="Location"
-            required
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            disabled={actionLoading}
+          {/* Mapbox Location Selector (preloads coordinates, updates address & lat/lng) */}
+          <MapboxLocationPicker
+            location={location}
+            onLocationChange={setLocation}
+            latitude={latitude}
+            longitude={longitude}
+            onCoordinatesChange={(lat, lng) => {
+              setLatitude(lat);
+              setLongitude(lng);
+            }}
           />
 
           <div>
@@ -449,29 +482,6 @@ export const AdminPopularPlaces: React.FC = () => {
               className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              disabled={actionLoading}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              id="edit-lat"
-              type="number"
-              step="any"
-              label="Latitude"
-              required
-              value={latitude}
-              onChange={(e) => setLatitude(e.target.value ? parseFloat(e.target.value) : "")}
-              disabled={actionLoading}
-            />
-            <Input
-              id="edit-lng"
-              type="number"
-              step="any"
-              label="Longitude"
-              required
-              value={longitude}
-              onChange={(e) => setLongitude(e.target.value ? parseFloat(e.target.value) : "")}
               disabled={actionLoading}
             />
           </div>
@@ -507,15 +517,51 @@ export const AdminPopularPlaces: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t">
+          <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white">
             <Button type="button" variant="ghost" onClick={() => setIsEditModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" isLoading={actionLoading} disabled={uploadingImage}>
+            <Button type="submit" isLoading={actionLoading} disabled={uploadingImage || !isCoordinatesValid}>
               Save Changes
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Modal */}
+      <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Delete Popular Place">
+        <div className="space-y-4">
+          {deleteError && (
+            <div className="rounded-md bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+              {deleteError}
+            </div>
+          )}
+
+          <div className="flex items-start gap-3 p-3 bg-red-50/60 rounded-lg border border-red-100">
+            <AlertTriangle className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-gray-800">
+              <p className="font-semibold text-red-900">Are you sure you want to delete this popular place?</p>
+              <p className="mt-1 text-xs text-gray-600">
+                You are about to delete <span className="font-bold text-gray-900">"{deletingPlace?.name}"</span>.
+                This action is permanent and cannot be undone.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsDeleteModalOpen(false)} disabled={actionLoading}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmDelete}
+              isLoading={actionLoading}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Confirm Delete
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

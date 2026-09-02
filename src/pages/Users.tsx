@@ -118,19 +118,19 @@ export const Users: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="sm:flex sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Users</h1>
-          <p className="mt-2 text-sm text-gray-700">A list of all users in the platform.</p>
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Users</h1>
+          <p className="mt-1 text-xs sm:text-sm text-gray-700">A list of all users in the platform.</p>
         </div>
         {isAdmin && (
-          <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
+          <div className="self-start sm:self-auto">
             <Button onClick={() => setIsCreateModalOpen(true)}>Add user</Button>
           </div>
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 mb-4">
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
           <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
             <Search className="h-5 w-5 text-gray-400" />
@@ -147,7 +147,7 @@ export const Users: React.FC = () => {
           />
         </div>
         <select
-          className="block w-48 rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
+          className="block w-full sm:w-48 rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
           value={roleFilter}
           onChange={(e) => {
             setRoleFilter(e.target.value);
@@ -160,7 +160,7 @@ export const Users: React.FC = () => {
           <option value="ADMIN">ADMIN</option>
         </select>
         <select
-          className="block w-48 rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
+          className="block w-full sm:w-48 rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
           value={statusFilter}
           onChange={(e) => {
             setStatusFilter(e.target.value);
@@ -181,7 +181,7 @@ export const Users: React.FC = () => {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
         </div>
       ) : (
-        <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+        <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
           <table className="min-w-full divide-y divide-gray-300">
             <thead className="bg-gray-50">
               <tr>

@@ -1,0 +1,947 @@
+import React, { useEffect, useState } from "react";
+import {
+  getMarketplaceStreams,
+  createMarketplaceStream,
+  getMarketplacePurchases,
+  getMarketplacePlaybackAccess,
+} from "../api/marketplace.api";
+import { getCategories } from "../api/categories.api";
+import { uploadMedia } from "../api/popularPlaces.api";
+import { MarketplaceStream, MarketplacePurchase, Category } from "../types";
+import { Badge } from "../components/common/Badge";
+import { Button } from "../components/common/Button";
+import { Modal } from "../components/common/Modal";
+import { Input } from "../components/common/Input";
+import { MapboxLocationPicker } from "../components/common/MapboxLocationPicker";
+import { Pagination } from "../components/common/Pagination";
+import {
+  Store,
+  Plus,
+  Search,
+  MapPin,
+  Clock,
+  Film,
+  Upload,
+  Loader2,
+  Play,
+  User,
+  ShoppingBag,
+  Info,
+  Layers,
+  Sparkles,
+} from "lucide-react";
+
+export const Marketplace: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<"streams" | "purchases">("streams");
+
+  // Streams State
+  const [streams, setStreams] = useState<MarketplaceStream[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Pagination & Filters
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [sortFilter, setSortFilter] = useState("newest");
+
+  // Categories list for dropdowns
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  // Purchases State
+  const [purchases, setPurchases] = useState<MarketplacePurchase[]>([]);
+  const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const [purchasesError, setPurchasesError] = useState<string | null>(null);
+
+  // Modals State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedStream, setSelectedStream] = useState<MarketplaceStream | null>(null);
+
+  // Playback Access URL State
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [playbackLoading, setPlaybackLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+
+  // Form State for Create Listing
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState<number | "">(10);
+  const [durationSeconds, setDurationSeconds] = useState<number | "">(60);
+  const [videoStorageKey, setVideoStorageKey] = useState("videos/sample_video.mp4");
+  const [thumbnailStorageKey, setThumbnailStorageKey] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [locationAddress, setLocationAddress] = useState("");
+  const [latitude, setLatitude] = useState<number | "">("");
+  const [longitude, setLongitude] = useState<number | "">("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [status, setStatus] = useState("PUBLISHED");
+
+  // File upload state
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingThumb, setUploadingThumb] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Fetch Categories
+  const fetchCategoriesList = async () => {
+    try {
+      const res = await getCategories();
+      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
+      setCategories(list);
+    } catch (err) {
+      console.warn("Failed to load categories for marketplace form", err);
+    }
+  };
+
+  // Fetch Streams
+  const fetchStreams = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params: any = { page, limit, sort: sortFilter };
+      if (search.trim()) params.search = search.trim();
+      if (statusFilter) params.status = statusFilter;
+      if (categoryFilter) params.categoryId = categoryFilter;
+
+      const res = await getMarketplaceStreams(params);
+      const resData = res.data as any;
+
+      if (Array.isArray(resData)) {
+        setStreams(resData);
+        setTotal(resData.length);
+        setTotalPages(1);
+      } else if (resData?.items) {
+        setStreams(resData.items);
+        setTotal(resData.pagination?.total || resData.items.length);
+        setTotalPages(resData.pagination?.totalPages || 1);
+      } else {
+        setStreams([]);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || "Failed to fetch marketplace streams");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch Purchases
+  const fetchPurchases = async () => {
+    setPurchasesLoading(true);
+    setPurchasesError(null);
+    try {
+      const res = await getMarketplacePurchases();
+      const resData = res.data as any;
+      if (Array.isArray(resData)) {
+        setPurchases(resData);
+      } else if (resData?.items) {
+        setPurchases(resData.items);
+      } else {
+        setPurchases([]);
+      }
+    } catch (err: any) {
+      setPurchasesError(err.response?.data?.message || err.message || "Failed to fetch purchases");
+    } finally {
+      setPurchasesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategoriesList();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "streams") {
+      fetchStreams();
+    } else {
+      fetchPurchases();
+    }
+  }, [activeTab, page, limit, search, statusFilter, categoryFilter, sortFilter]);
+
+  // Handle Video File Upload -> POST /api/v1/media/upload
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingVideo(true);
+    try {
+      await uploadMedia(file);
+      // Derive videos/ key from uploaded URL or string
+      const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      setVideoStorageKey(`videos/${Date.now()}_${filename}`);
+      alert("Video file uploaded successfully! Storage key populated.");
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to upload video file.");
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+
+  // Handle Thumbnail File Upload -> POST /api/v1/media/upload
+  const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingThumb(true);
+    try {
+      await uploadMedia(file);
+      const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      setThumbnailStorageKey(`images/${Date.now()}_${filename}`);
+      alert("Thumbnail file uploaded successfully! Storage key populated.");
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to upload thumbnail file.");
+    } finally {
+      setUploadingThumb(false);
+    }
+  };
+
+  // Reset Create Form
+  const resetForm = () => {
+    setTitle("");
+    setDescription("");
+    setPrice(10);
+    setDurationSeconds(60);
+    setVideoStorageKey("videos/sample_video.mp4");
+    setThumbnailStorageKey("");
+    setSelectedCategoryId("");
+    setLocationAddress("");
+    setLatitude("");
+    setLongitude("");
+    setExpiresAt("");
+    setStatus("PUBLISHED");
+  };
+
+  // Handle Create Submit
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      alert("Title is required.");
+      return;
+    }
+    if (typeof price !== "number" || price < 0) {
+      alert("Price must be a valid number >= 0.");
+      return;
+    }
+    if (!videoStorageKey.trim()) {
+      alert("Video storage key is required (must start with videos/).");
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const payload: any = {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        price: Number(price),
+        durationSeconds: typeof durationSeconds === "number" ? durationSeconds : 60,
+        videoStorageKey: videoStorageKey.trim(),
+        thumbnailStorageKey: thumbnailStorageKey.trim() || undefined,
+        categoryId: selectedCategoryId || undefined,
+        status,
+      };
+
+      if (locationAddress.trim() && typeof latitude === "number" && typeof longitude === "number") {
+        payload.customLocation = {
+          address: locationAddress.trim(),
+          latitude: Number(latitude),
+          longitude: Number(longitude),
+        };
+      }
+
+      if (expiresAt) {
+        payload.expiresAt = new Date(expiresAt).toISOString();
+      }
+
+      await createMarketplaceStream(payload);
+      setIsCreateModalOpen(false);
+      resetForm();
+      fetchStreams();
+      alert("Marketplace VOD stream listed successfully!");
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to create marketplace listing.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle Open Details
+  const handleOpenDetails = async (stream: MarketplaceStream) => {
+    setSelectedStream(stream);
+    setPlaybackUrl(null);
+    setPlaybackError(null);
+    setIsDetailsModalOpen(true);
+  };
+
+  // Handle Fetch Playback Access URL
+  const handleGetPlaybackAccess = async (streamId: string) => {
+    setPlaybackLoading(true);
+    setPlaybackError(null);
+    try {
+      const res = await getMarketplacePlaybackAccess(streamId);
+      if (res.data?.playbackUrl) {
+        setPlaybackUrl(res.data.playbackUrl);
+      } else {
+        setPlaybackError("No playback URL returned by server.");
+      }
+    } catch (err: any) {
+      setPlaybackError(
+        err.response?.data?.message ||
+          err.message ||
+          "Playback access restricted. You may need to purchase or own this video."
+      );
+    } finally {
+      setPlaybackLoading(false);
+    }
+  };
+
+  const getStatusBadgeVariant = (st: string) => {
+    switch (st?.toUpperCase()) {
+      case "PUBLISHED":
+      case "LIVE":
+        return <Badge variant="success">PUBLISHED</Badge>;
+      case "DRAFT":
+        return <Badge variant="default">DRAFT</Badge>;
+      case "EXPIRED":
+        return <Badge variant="warning">EXPIRED</Badge>;
+      case "CANCELLED":
+      case "ENDED":
+        return <Badge variant="danger">{st}</Badge>;
+      default:
+        return <Badge>{st}</Badge>;
+    }
+  };
+
+  const fallbackThumb =
+    "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=600&q=80";
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Store className="h-6 w-6 text-indigo-600 flex-shrink-0" /> Marketplace VOD Administration
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-gray-500">
+            Manage Video-On-Demand (VOD) marketplace streams, inspect purchases, and create listings.
+          </p>
+        </div>
+        <Button onClick={() => setIsCreateModalOpen(true)} className="self-start sm:self-auto flex items-center gap-1.5 shrink-0 bg-indigo-600 hover:bg-indigo-700">
+          <Plus className="h-4 w-4" /> Add Marketplace VOD
+        </Button>
+      </div>
+
+      {/* Overview Stat Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+          <div className="p-3 bg-indigo-50 rounded-lg text-indigo-600">
+            <Film className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Total Listings</p>
+            <p className="text-lg font-bold text-gray-900">{total}</p>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+          <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Published VODs</p>
+            <p className="text-lg font-bold text-gray-900">
+              {streams.filter((s) => s.status === "PUBLISHED" || (s.status as string) === "LIVE").length}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+          <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+            <ShoppingBag className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Completed Sales</p>
+            <p className="text-lg font-bold text-gray-900">
+              {streams.reduce((acc, curr) => acc + (curr.purchaseCount || 0), 0)}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+          <div className="p-3 bg-purple-50 rounded-lg text-purple-600">
+            <Layers className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Categories</p>
+            <p className="text-lg font-bold text-gray-900">{categories.length}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 overflow-x-auto">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 min-w-max">
+          <button
+            onClick={() => {
+              setActiveTab("streams");
+              setPage(1);
+            }}
+            className={`py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center gap-2 transition ${
+              activeTab === "streams"
+                ? "border-indigo-600 text-indigo-600 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <Film className="h-4 w-4" /> VOD Listings ({total})
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("purchases");
+              setPage(1);
+            }}
+            className={`py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center gap-2 transition ${
+              activeTab === "purchases"
+                ? "border-indigo-600 text-indigo-600 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <ShoppingBag className="h-4 w-4" /> Purchases History ({purchases.length})
+          </button>
+        </nav>
+      </div>
+
+      {/* TAB 1: VOD LISTINGS */}
+      {activeTab === "streams" && (
+        <div className="space-y-4">
+          {/* Filters Bar */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search listings by title, location, or description..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full sm:w-44 border border-gray-300 rounded-md py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              <option value="">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full sm:w-40 border border-gray-300 rounded-md py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              <option value="">All Statuses</option>
+              <option value="PUBLISHED">PUBLISHED</option>
+              <option value="DRAFT">DRAFT</option>
+              <option value="ENDED">ENDED</option>
+              <option value="EXPIRED">EXPIRED</option>
+              <option value="CANCELLED">CANCELLED</option>
+            </select>
+
+            <select
+              value={sortFilter}
+              onChange={(e) => {
+                setSortFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full sm:w-40 border border-gray-300 rounded-md py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="highest_price">Highest Price</option>
+              <option value="lowest_price">Lowest Price</option>
+            </select>
+          </div>
+
+          {/* Listings Table / Empty State / Loader */}
+          {error ? (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md text-sm">{error}</div>
+          ) : loading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+            </div>
+          ) : streams.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-500 space-y-3">
+              <Film className="h-12 w-12 mx-auto text-gray-300" />
+              <p className="text-lg font-medium text-gray-900">No marketplace VOD streams found</p>
+              <p className="text-xs">Click "Add Marketplace VOD" above to list the first stream.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+              <table className="min-w-full divide-y divide-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                      Listing Title
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Price / Duration
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Location / Category
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Creator
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Sales / Status
+                    </th>
+                    <th scope="col" className="relative py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-6">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {streams.map((stream) => (
+                    <tr key={stream.id} className="hover:bg-gray-50/50 transition">
+                      <td className="py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                        <div className="flex items-center gap-3">
+                          <div className="h-12 w-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border relative">
+                            <img
+                              src={stream.thumbnailUrl || fallbackThumb}
+                              alt={stream.title}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = fallbackThumb;
+                              }}
+                              className="h-full w-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                              <Play className="h-4 w-4 text-white fill-white opacity-80" />
+                            </div>
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-900 line-clamp-1">{stream.title}</p>
+                            <p className="text-xs text-gray-500 line-clamp-1 max-w-xs">
+                              {stream.description || "No description provided."}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-bold text-indigo-600 text-sm">
+                            ${(stream.price || 0).toFixed(2)}
+                          </span>
+                          <span className="text-xs text-gray-500 flex items-center gap-1 font-mono">
+                            <Clock className="h-3 w-3 text-gray-400" />
+                            {stream.durationSeconds ? `${stream.durationSeconds}s` : "-"}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-4 text-sm text-gray-600">
+                        <div className="flex flex-col gap-0.5">
+                          {stream.customLocation?.address ? (
+                            <span className="text-xs flex items-center gap-1 text-gray-800 line-clamp-1">
+                              <MapPin className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                              {stream.customLocation.address}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">No custom location</span>
+                          )}
+                          <span className="text-[11px] text-gray-500 font-medium">
+                            Category: {stream.category?.name || "Uncategorized"}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-600">
+                        <div className="flex items-center gap-1.5">
+                          <User className="h-3.5 w-3.5 text-gray-400" />
+                          <span className="font-medium text-gray-900">{stream.creator?.username || "Unknown"}</span>
+                        </div>
+                      </td>
+
+                      <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500">
+                        <div className="flex flex-col gap-1.5 items-start">
+                          {getStatusBadgeVariant(stream.status)}
+                          <span className="text-[11px] font-semibold text-gray-600">
+                            {stream.purchaseCount || 0} purchases
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleOpenDetails(stream)}
+                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-900 border border-indigo-100 hover:bg-indigo-50"
+                        >
+                          <Info className="h-3.5 w-3.5 mr-1" /> View Details
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <Pagination
+                page={page}
+                limit={limit}
+                total={total}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: PURCHASES HISTORY */}
+      {activeTab === "purchases" && (
+        <div>
+          {purchasesError ? (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md text-sm">{purchasesError}</div>
+          ) : purchasesLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+            </div>
+          ) : purchases.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-500 space-y-3">
+              <ShoppingBag className="h-12 w-12 mx-auto text-gray-300" />
+              <p className="text-lg font-medium text-gray-900">No marketplace purchases record found</p>
+              <p className="text-xs">Purchased VOD stream transactions will appear here.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+              <table className="min-w-full divide-y divide-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                      Purchase ID
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      VOD Listing Title
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Amount ($)
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Purchased At
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Access Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {purchases.map((pur) => (
+                    <tr key={pur.id}>
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-xs font-mono font-bold text-gray-900 sm:pl-6">
+                        {pur.id}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900">
+                        {pur.listing?.title || "Marketplace Video"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm font-bold text-emerald-600 font-mono">
+                        ${(pur.amount || 0).toFixed(2)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500">
+                        {pur.purchasedAt ? new Date(pur.purchasedAt).toLocaleString() : "-"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500">
+                        {pur.isAccessible ? (
+                          <Badge variant="success">ACCESSIBLE</Badge>
+                        ) : (
+                          <Badge variant="default">EXPIRED / RESTRICTED</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* CREATE MARKETPLACE STREAM MODAL */}
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Add Marketplace VOD Stream Listing"
+      >
+        <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <Input
+            id="create-title"
+            type="text"
+            label="Listing Title"
+            placeholder="e.g. Exclusive drone view of Sunset at Marine Drive"
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={actionLoading}
+          />
+
+          <div>
+            <label htmlFor="create-desc" className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              id="create-desc"
+              rows={3}
+              className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+              placeholder="Describe the footage content, resolution, quality..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={actionLoading}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              id="create-price"
+              type="number"
+              step="0.01"
+              label="Price ($)"
+              placeholder="10.00"
+              required
+              value={price}
+              onChange={(e) => setPrice(e.target.value ? parseFloat(e.target.value) : "")}
+              disabled={actionLoading}
+            />
+
+            <Input
+              id="create-duration"
+              type="number"
+              label="Duration (seconds)"
+              placeholder="60"
+              required
+              value={durationSeconds}
+              onChange={(e) => setDurationSeconds(e.target.value ? parseInt(e.target.value, 10) : "")}
+              disabled={actionLoading}
+            />
+          </div>
+
+          {/* Video Storage Key Upload Input */}
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Video Storage Key (must start with videos/)</label>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-md shadow-xs flex items-center justify-center gap-1.5 transition shrink-0">
+                {uploadingVideo ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <Upload className="h-4 w-4 text-indigo-600" />}
+                <span>Upload Video File</span>
+                <input type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} disabled={uploadingVideo || actionLoading} />
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="videos/sample_video.mp4"
+                value={videoStorageKey}
+                onChange={(e) => setVideoStorageKey(e.target.value)}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-xs font-mono focus:border-indigo-600 focus:outline-none"
+                disabled={actionLoading}
+              />
+            </div>
+          </div>
+
+          {/* Thumbnail Storage Key Upload Input */}
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Thumbnail Storage Key (optional, starts with images/)</label>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-md shadow-xs flex items-center justify-center gap-1.5 transition shrink-0">
+                {uploadingThumb ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <Upload className="h-4 w-4 text-indigo-600" />}
+                <span>Upload Thumbnail</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleThumbUpload} disabled={uploadingThumb || actionLoading} />
+              </label>
+              <input
+                type="text"
+                placeholder="images/sample_thumb.jpg"
+                value={thumbnailStorageKey}
+                onChange={(e) => setThumbnailStorageKey(e.target.value)}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-xs font-mono focus:border-indigo-600 focus:outline-none"
+                disabled={actionLoading}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="create-category" className="block text-sm font-medium text-gray-700 mb-1">
+              Category
+            </label>
+            <select
+              id="create-category"
+              className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-indigo-600 focus:outline-none"
+              value={selectedCategoryId}
+              onChange={(e) => setSelectedCategoryId(e.target.value)}
+              disabled={actionLoading}
+            >
+              <option value="">Select Category (Optional)</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Map Location Selector */}
+          <MapboxLocationPicker
+            location={locationAddress}
+            onLocationChange={setLocationAddress}
+            latitude={latitude}
+            longitude={longitude}
+            onCoordinatesChange={(lat, lng) => {
+              setLatitude(lat);
+              setLongitude(lng);
+            }}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              id="create-expires"
+              type="datetime-local"
+              label="Expiration Date & Time (Optional)"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+              disabled={actionLoading}
+            />
+
+            <div>
+              <label htmlFor="create-status" className="block text-sm font-medium text-gray-700 mb-1">
+                Status
+              </label>
+              <select
+                id="create-status"
+                className="block w-full rounded-md border border-gray-300 p-2 text-sm focus:border-indigo-600 focus:outline-none"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                disabled={actionLoading}
+              >
+                <option value="PUBLISHED">PUBLISHED</option>
+                <option value="DRAFT">DRAFT</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white">
+            <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={actionLoading} disabled={uploadingVideo || uploadingThumb} className="bg-indigo-600 hover:bg-indigo-700">
+              List Marketplace VOD
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* STREAM DETAILS & PLAYBACK MODAL */}
+      {selectedStream && (
+        <Modal
+          isOpen={isDetailsModalOpen}
+          onClose={() => setIsDetailsModalOpen(false)}
+          title={selectedStream.title}
+        >
+          <div className="space-y-4">
+            <div className="h-60 w-full rounded-xl overflow-hidden bg-black relative flex items-center justify-center">
+              {playbackUrl ? (
+                <video src={playbackUrl} controls autoPlay className="h-full w-full object-contain" />
+              ) : (
+                <>
+                  <img
+                    src={selectedStream.thumbnailUrl || fallbackThumb}
+                    alt={selectedStream.title}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = fallbackThumb;
+                    }}
+                    className="h-full w-full object-cover opacity-60"
+                  />
+                  <button
+                    onClick={() => handleGetPlaybackAccess(selectedStream.id)}
+                    disabled={playbackLoading}
+                    className="absolute bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-2 backdrop-blur-xs transition"
+                  >
+                    {playbackLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5 fill-white" />}
+                    <span>Request Video Playback</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {playbackError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded text-xs flex items-center gap-2">
+                <Info className="h-4 w-4 flex-shrink-0" />
+                <span>{playbackError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500 font-medium">Price:</span>
+                <span className="font-bold text-indigo-600 text-base">${(selectedStream.price || 0).toFixed(2)}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500 font-medium">Status:</span>
+                <span>{getStatusBadgeVariant(selectedStream.status)}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500 font-medium">Total Purchases:</span>
+                <span className="font-mono font-bold text-gray-900">{selectedStream.purchaseCount || 0}</span>
+              </div>
+
+              {selectedStream.customLocation?.address && (
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-500 font-medium shrink-0">Location:</span>
+                  <span className="font-medium text-gray-900 text-right flex items-center justify-end gap-1">
+                    <MapPin className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                    {selectedStream.customLocation.address}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500 font-medium">Creator:</span>
+                <span className="font-semibold text-gray-900">{selectedStream.creator?.username || "Unknown"}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500 font-medium">Listed Date:</span>
+                <span className="font-mono text-gray-700">{new Date(selectedStream.createdAt).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-600 leading-relaxed border-t pt-3">
+              {selectedStream.description || "No description available for this VOD stream."}
+            </p>
+
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Button variant="ghost" onClick={() => setIsDetailsModalOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};

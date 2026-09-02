@@ -21,10 +21,12 @@
     "vite": "^8.2.0"
   },
   "dependencies": {
+    "@types/mapbox-gl": "^3.4.1",
     "axios": "^1.19.0",
     "clsx": "^2.1.1",
     "firebase": "^12.18.0",
     "lucide-react": "^1.33.0",
+    "mapbox-gl": "^3.29.0",
     "react-router-dom": "^7.18.2",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.6.0"
