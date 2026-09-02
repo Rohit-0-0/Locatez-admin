@@ -15,7 +15,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const navItems = [
     { name: "Dashboard", path: "/", icon: LayoutDashboard, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
-    { name: "Popular Places Feed", path: "/popular-places", icon: Compass, roles: ["ADMIN", "MODERATOR", "SUPERADMIN", "USER"] },
+    { name: "Popular Places Feed", path: "/popular-places", icon: Compass, roles: ["ADMIN", "MODERATOR", "SUPERADMIN", "USER"], hidden: true },
     { name: "Users", path: "/users", icon: Users, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
     { name: "Video Requests", path: "/video-requests", icon: Video, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
     { name: "Marketplace VOD", path: "/marketplace", icon: Store, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
@@ -24,10 +24,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { name: "Popular Places (Admin)", path: "/admin/popular-places", icon: Compass, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
     { name: "Audit Logs", path: "/audit-logs", icon: ShieldAlert, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
     { name: "Admin Settings", path: "/settings", icon: Settings, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
-    { name: "LiveKit Chat Demo", path: "/chat-demo", icon: MessageSquare, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"] },
+    { name: "LiveKit Chat Demo", path: "/chat-demo", icon: MessageSquare, roles: ["ADMIN", "MODERATOR", "SUPERADMIN"], hidden: true },
   ];
 
-  const filteredNav = navItems.filter((item) => role && item.roles.includes(role));
+  const filteredNav = navItems.filter((item) => !item.hidden && role && item.roles.includes(role));
 
   return (
     <>
