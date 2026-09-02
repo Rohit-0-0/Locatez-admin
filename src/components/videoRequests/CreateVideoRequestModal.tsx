@@ -224,7 +224,7 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
           id="req-reward"
           type="number"
           step="0.01"
-          label="Reward Amount ($)"
+          label="Reward Amount (₹)"
           placeholder="15.00"
           required
           value={rewardAmount}

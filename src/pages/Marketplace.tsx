@@ -548,7 +548,7 @@ export const Marketplace: React.FC = () => {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700">
                         <div className="flex flex-col gap-0.5">
                           <span className="font-bold text-indigo-600 text-sm">
-                            ${(stream.price || 0).toFixed(2)}
+                            ₹{(stream.price || 0).toFixed(2)}
                           </span>
                           <span className="text-xs text-gray-500 flex items-center gap-1 font-mono">
                             <Clock className="h-3 w-3 text-gray-400" />
@@ -643,7 +643,7 @@ export const Marketplace: React.FC = () => {
                       VOD Listing Title
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Amount ($)
+                      Amount (₹)
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                       Purchased At
@@ -663,7 +663,7 @@ export const Marketplace: React.FC = () => {
                         {pur.listing?.title || "Marketplace Video"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm font-bold text-emerald-600 font-mono">
-                        ${(pur.amount || 0).toFixed(2)}
+                        ₹{(pur.amount || 0).toFixed(2)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500">
                         {pur.purchasedAt ? new Date(pur.purchasedAt).toLocaleString() : "-"}
@@ -722,7 +722,7 @@ export const Marketplace: React.FC = () => {
               id="create-price"
               type="number"
               step="0.01"
-              label="Price ($)"
+              label="Price (₹)"
               placeholder="10.00"
               required
               value={price}
@@ -896,7 +896,7 @@ export const Marketplace: React.FC = () => {
             <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-gray-500 font-medium">Price:</span>
-                <span className="font-bold text-indigo-600 text-base">${(selectedStream.price || 0).toFixed(2)}</span>
+                <span className="font-bold text-indigo-600 text-base">₹{(selectedStream.price || 0).toFixed(2)}</span>
               </div>
 
               <div className="flex items-center justify-between">

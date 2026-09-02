@@ -216,10 +216,13 @@ export const Settings: React.FC = () => {
     setServiceAreaSaving(true);
     setServiceAreaError(null);
     try {
-      const payload = {
-        mode: pendingMode,
-        areas: pendingAreas.map((a) => ({ id: a.id, enabled: a.enabled })),
-      };
+      const payload =
+        pendingMode === "PAN_INDIA"
+          ? { mode: "PAN_INDIA" as const }
+          : {
+              mode: "RESTRICTED" as const,
+              areas: pendingAreas.map((a) => ({ id: a.id, enabled: a.enabled })),
+            };
       const updated = await updateServiceAreaSettings(payload);
       setServiceAreaSettings(updated);
       setPendingMode(updated.mode);

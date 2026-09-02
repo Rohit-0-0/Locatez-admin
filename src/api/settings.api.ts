@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import { ServiceAreaSettings, ServiceAreaMode, ServiceArea } from "../types";
+import { ServiceAreaSettings, ServiceAreaMode } from "../types";
 
 export interface VideoRequestSettings {
   requireApprovalForAll: boolean;
@@ -92,7 +92,7 @@ export const getServiceAreaSettings = async (): Promise<ServiceAreaSettings> => 
 
 export const updateServiceAreaSettings = async (payload: {
   mode: ServiceAreaMode;
-  areas?: { id: string; enabled: boolean }[] | ServiceArea[];
+  areas?: { id: string; enabled: boolean }[];
 }): Promise<ServiceAreaSettings> => {
   const response = await apiClient.patch<ServiceAreaSettings | { success: boolean; data: ServiceAreaSettings }>(
     "/admin/service-area",
