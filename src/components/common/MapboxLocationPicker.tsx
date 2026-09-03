@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Search, MapPin, Loader2, Navigation, AlertTriangle, Crosshair } from "lucide-react";
+import { Search, MapPin, Loader2, Navigation, AlertTriangle, Crosshair, Layers } from "lucide-react";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || "";
 
@@ -9,6 +9,7 @@ mapboxgl.accessToken = MAPBOX_TOKEN;
 
 interface MapboxSearchResult {
   id: string;
+  mapbox_id?: string;
   place_name: string;
   text: string;
   center: [number, number]; // [longitude, latitude]
@@ -22,6 +23,12 @@ interface MapboxLocationPickerProps {
   onCoordinatesChange: (lat: number, lng: number) => void;
 }
 
+const MAP_STYLES = {
+  streets: "mapbox://styles/mapbox/streets-v12",
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+  outdoors: "mapbox://styles/mapbox/outdoors-v12",
+};
+
 export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
   location,
   onLocationChange,
@@ -32,8 +39,10 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const sessionTokenRef = useRef<string>("");
 
-  // Search & Geolocation State
+  // Map Style & Geolocation State
+  const [mapStyle, setMapStyle] = useState<"streets" | "satellite" | "outdoors">("streets");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MapboxSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -41,9 +50,30 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
   const [tokenError, setTokenError] = useState(false);
 
+  // Generate UUIDv4 for Session Token
+  useEffect(() => {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      sessionTokenRef.current = crypto.randomUUID();
+    } else {
+      sessionTokenRef.current = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    }
+  }, []);
+
   // Default fallback center (e.g. Mumbai [lng, lat])
   const defaultLng = typeof longitude === "number" && !isNaN(longitude) ? longitude : 72.8236;
   const defaultLat = typeof latitude === "number" && !isNaN(latitude) ? latitude : 18.9432;
+
+  // Handle Map Style Switch
+  const handleStyleChange = (styleKey: "streets" | "satellite" | "outdoors") => {
+    setMapStyle(styleKey);
+    if (mapRef.current) {
+      mapRef.current.setStyle(MAP_STYLES[styleKey]);
+    }
+  };
 
   // Perform Mapbox Reverse Geocoding for a given [lng, lat]
   const reverseGeocode = async (lng: number, lat: number) => {
@@ -103,7 +133,7 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
     if (!mapRef.current) {
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style: "mapbox://styles/mapbox/streets-v12",
+        style: MAP_STYLES[mapStyle],
         center: [defaultLng, defaultLat],
         zoom: typeof latitude === "number" ? 14 : 11,
       });
@@ -121,9 +151,7 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
               if (mapRef.current) mapRef.current.flyTo({ center: [lng, lat], zoom: 14 });
               reverseGeocode(lng, lat);
             },
-            () => {
-              // Silently fallback to default center if permission denied
-            },
+            () => {},
             { timeout: 5000 }
           );
         }
@@ -190,7 +218,7 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
     }
   }, []);
 
-  // Update Marker & Map Center when coordinates change externally (e.g. edit mode preloading)
+  // Update Marker & Map Center when coordinates change externally
   useEffect(() => {
     if (
       typeof latitude === "number" &&
@@ -207,52 +235,142 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
     }
   }, [latitude, longitude]);
 
-  // Debounced Mapbox Geocoding Search
+  // Dynamic Mapbox Search using Mapbox Searchbox API (search/searchbox/v1/suggest) & v6 Forward API
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    const rawQuery = searchQuery.trim();
+    if (!rawQuery) {
       setSearchResults([]);
       setIsSearching(false);
       return;
     }
 
+    const cleanQuery = rawQuery.replace(/\bdehli\b/gi, "delhi");
+
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-            searchQuery.trim()
-          )}.json?access_token=${MAPBOX_TOKEN}&limit=5`
-        );
-        if (res.status === 401) {
+        // Fetch from Mapbox Searchbox API v1/suggest & Mapbox v6 Forward Geocoding
+        const [suggestRes, v6Res] = await Promise.allSettled([
+          fetch(
+            `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(
+              cleanQuery
+            )}&access_token=${MAPBOX_TOKEN}&session_token=${sessionTokenRef.current}&language=en&limit=10`
+          ),
+          fetch(
+            `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(
+              cleanQuery
+            )}&access_token=${MAPBOX_TOKEN}&limit=10`
+          ),
+        ]);
+
+        const results: MapboxSearchResult[] = [];
+        const seen = new Set<string>();
+
+        // 1. Process Mapbox Searchbox API v1/suggest Results
+        if (suggestRes.status === "fulfilled" && suggestRes.value.ok) {
+          const suggData = await suggestRes.value.json();
+          if (Array.isArray(suggData.suggestions)) {
+            for (const s of suggData.suggestions) {
+              const name = s.name || "";
+              const fullAddr = s.full_address || (s.place_formatted ? `${name}, ${s.place_formatted}` : name);
+              if (name) {
+                const key = fullAddr.toLowerCase();
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  results.push({
+                    id: s.mapbox_id || Math.random().toString(),
+                    mapbox_id: s.mapbox_id,
+                    text: name,
+                    place_name: fullAddr,
+                    center: [0, 0], // Derived via v1/retrieve on click if needed
+                  });
+                }
+              }
+            }
+          }
+        } else if (suggestRes.status === "fulfilled" && suggestRes.value.status === 401) {
           setTokenError(true);
-          setIsSearching(false);
-          return;
         }
-        const data = await res.json();
-        setSearchResults(data.features || []);
+
+        // 2. Process Mapbox v6 Forward Results (Provides instant coordinates)
+        if (v6Res.status === "fulfilled" && v6Res.value.ok) {
+          const v6Data = await v6Res.value.json();
+          if (Array.isArray(v6Data.features)) {
+            for (const f of v6Data.features) {
+              const name = f.properties?.name || f.properties?.name_preferred || f.text || "";
+              const fullAddr = f.properties?.full_address || f.properties?.place_formatted || f.place_name || name;
+              const coords = f.geometry?.coordinates; // [lng, lat]
+
+              if (name && coords && Array.isArray(coords) && coords.length === 2) {
+                const key = fullAddr.toLowerCase();
+                const existing = results.find(
+                  (r) => r.place_name.toLowerCase() === key || r.text.toLowerCase() === name.toLowerCase()
+                );
+                if (existing) {
+                  existing.center = [coords[0], coords[1]];
+                } else if (!seen.has(key)) {
+                  seen.add(key);
+                  results.push({
+                    id: f.id || Math.random().toString(),
+                    mapbox_id: f.properties?.mapbox_id,
+                    text: name,
+                    place_name: fullAddr,
+                    center: [coords[0], coords[1]],
+                  });
+                }
+              }
+            }
+          }
+        } else if (v6Res.status === "fulfilled" && v6Res.value.status === 401) {
+          setTokenError(true);
+        }
+
+        setSearchResults(results);
         setShowDropdown(true);
       } catch (err) {
-        console.error("[Mapbox] Search geocoding error:", err);
+        console.error("[Mapbox] Searchbox suggest error:", err);
       } finally {
         setIsSearching(false);
       }
-    }, 300);
+    }, 250);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
   // Handle Search Result Selection
-  const handleSelectResult = (result: MapboxSearchResult) => {
-    const [lng, lat] = result.center;
+  const handleSelectResult = async (result: MapboxSearchResult) => {
+    let [lng, lat] = result.center;
+    let placeName = result.place_name;
 
-    onLocationChange(result.place_name);
-    onCoordinatesChange(lat, lng);
-
-    if (markerRef.current) {
-      markerRef.current.setLngLat([lng, lat]);
+    // If result came from Searchbox suggest without pre-loaded coordinates, call v1/retrieve
+    if (result.mapbox_id && lng === 0 && lat === 0) {
+      try {
+        const retRes = await fetch(
+          `https://api.mapbox.com/search/searchbox/v1/retrieve/${result.mapbox_id}?access_token=${MAPBOX_TOKEN}&session_token=${sessionTokenRef.current}`
+        );
+        if (retRes.ok) {
+          const retData = await retRes.json();
+          const feat = retData.features?.[0];
+          if (feat && feat.geometry?.coordinates) {
+            [lng, lat] = feat.geometry.coordinates;
+            placeName = feat.properties?.full_address || feat.properties?.name || placeName;
+          }
+        }
+      } catch (e) {
+        console.warn("[Mapbox Searchbox] Retrieve error:", e);
+      }
     }
-    if (mapRef.current) {
-      mapRef.current.flyTo({ center: [lng, lat], zoom: 14 });
+
+    if (lng !== 0 || lat !== 0) {
+      onLocationChange(placeName);
+      onCoordinatesChange(lat, lng);
+
+      if (markerRef.current) {
+        markerRef.current.setLngLat([lng, lat]);
+      }
+      if (mapRef.current) {
+        mapRef.current.flyTo({ center: [lng, lat], zoom: 15 });
+      }
     }
 
     setSearchQuery("");
@@ -273,10 +391,10 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
         </div>
       )}
 
-      {/* 1. Location Search Input + Geolocation Button */}
+      {/* 1. Single Location Search Input + Geolocation Button */}
       <div className="relative">
         <div className="flex items-center justify-between mb-1">
-          <label htmlFor="mapbox-search" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="mapbox-single-search" className="block text-sm font-medium text-gray-700">
             Search Location on Map
           </label>
           <button
@@ -293,15 +411,16 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
             <span>Use Current Location</span>
           </button>
         </div>
+
         <div className="relative">
           <input
-            id="mapbox-search"
+            id="mapbox-single-search"
             type="text"
-            placeholder="e.g. Marine Drive Mumbai, Rajwada Indore..."
+            placeholder="Search any place, monument, address (e.g. Jantar Mantar, Qutub Minar, Marine Drive...)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-            className="w-full pl-9 pr-8 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-9 pr-8 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
           />
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           {isSearching && (
@@ -329,13 +448,46 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
         )}
       </div>
 
-      {/* 2. Interactive Mapbox Container */}
+      {/* 2. Interactive Mapbox Container & Style Selector */}
       <div className="space-y-1">
         <div className="flex items-center justify-between text-xs text-gray-500">
           <span className="flex items-center gap-1 font-medium text-gray-700">
-            <Navigation className="h-3.5 w-3.5 text-indigo-600" /> Mapbox Location Pin Selector
+            <Navigation className="h-3.5 w-3.5 text-indigo-600" /> Interactive Map Pin Selector
           </span>
-          <span>Click map or drag pin to adjust location</span>
+
+          {/* Map Layer Switcher (Streets, Satellite Hybrid, Outdoors) */}
+          <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-md border border-gray-200">
+            <span className="text-[10px] text-gray-400 font-semibold px-1 flex items-center gap-0.5">
+              <Layers className="h-3 w-3" /> Layer:
+            </span>
+            <button
+              type="button"
+              onClick={() => handleStyleChange("streets")}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                mapStyle === "streets" ? "bg-white text-indigo-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Streets
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStyleChange("satellite")}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                mapStyle === "satellite" ? "bg-white text-indigo-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Satellite Hybrid
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStyleChange("outdoors")}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                mapStyle === "outdoors" ? "bg-white text-indigo-600 shadow-xs" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Outdoors
+            </button>
+          </div>
         </div>
         <div
           ref={mapContainerRef}
@@ -362,7 +514,7 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
         </div>
       </div>
 
-      {/* 4. Read-Only Derived Coordinates Display */}
+      {/* 4. Derived Coordinates Display */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-md border border-slate-200 text-xs">
         <div>
           <label className="block text-slate-500 font-medium mb-1">Derived Latitude</label>

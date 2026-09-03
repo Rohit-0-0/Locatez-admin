@@ -4,6 +4,8 @@ import {
   createMarketplaceStream,
   getMarketplacePurchases,
   getMarketplacePlaybackAccess,
+  approveMarketplaceStream,
+  rejectMarketplaceStream,
 } from "../api/marketplace.api";
 import { getCategories } from "../api/categories.api";
 import { uploadMedia } from "../api/popularPlaces.api";
@@ -14,6 +16,7 @@ import { Modal } from "../components/common/Modal";
 import { Input } from "../components/common/Input";
 import { MapboxLocationPicker } from "../components/common/MapboxLocationPicker";
 import { Pagination } from "../components/common/Pagination";
+import { useToast } from "../context/ToastContext";
 import {
   Store,
   Plus,
@@ -27,11 +30,14 @@ import {
   User,
   ShoppingBag,
   Info,
-  Layers,
   Sparkles,
+  Check,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 
 export const Marketplace: React.FC = () => {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"streams" | "purchases">("streams");
 
   // Streams State
@@ -61,7 +67,11 @@ export const Marketplace: React.FC = () => {
   // Modals State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+
   const [selectedStream, setSelectedStream] = useState<MarketplaceStream | null>(null);
+  const [streamToReject, setStreamToReject] = useState<MarketplaceStream | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   // Playback Access URL State
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
@@ -82,10 +92,11 @@ export const Marketplace: React.FC = () => {
   const [expiresAt, setExpiresAt] = useState("");
   const [status, setStatus] = useState("PUBLISHED");
 
-  // File upload state
+  // Loading states
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Fetch Categories
   const fetchCategoriesList = async () => {
@@ -162,7 +173,7 @@ export const Marketplace: React.FC = () => {
     }
   }, [activeTab, page, limit, search, statusFilter, categoryFilter, sortFilter]);
 
-  // Handle Video File Upload -> POST /api/v1/media/upload
+  // Handle Video File Upload
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -170,18 +181,17 @@ export const Marketplace: React.FC = () => {
     setUploadingVideo(true);
     try {
       await uploadMedia(file);
-      // Derive videos/ key from uploaded URL or string
       const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       setVideoStorageKey(`videos/${Date.now()}_${filename}`);
-      alert("Video file uploaded successfully! Storage key populated.");
+      toast.success("Video file uploaded successfully! Storage key populated.");
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to upload video file.");
+      toast.error(err.response?.data?.message || err.message || "Failed to upload video file.");
     } finally {
       setUploadingVideo(false);
     }
   };
 
-  // Handle Thumbnail File Upload -> POST /api/v1/media/upload
+  // Handle Thumbnail File Upload
   const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -191,9 +201,9 @@ export const Marketplace: React.FC = () => {
       await uploadMedia(file);
       const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       setThumbnailStorageKey(`images/${Date.now()}_${filename}`);
-      alert("Thumbnail file uploaded successfully! Storage key populated.");
+      toast.success("Thumbnail file uploaded successfully! Storage key populated.");
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to upload thumbnail file.");
+      toast.error(err.response?.data?.message || err.message || "Failed to upload thumbnail file.");
     } finally {
       setUploadingThumb(false);
     }
@@ -219,15 +229,15 @@ export const Marketplace: React.FC = () => {
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert("Title is required.");
+      toast.error("Title is required.");
       return;
     }
     if (typeof price !== "number" || price < 0) {
-      alert("Price must be a valid number >= 0.");
+      toast.error("Price must be a valid number >= 0.");
       return;
     }
     if (!videoStorageKey.trim()) {
-      alert("Video storage key is required (must start with videos/).");
+      toast.error("Video storage key is required (must start with videos/).");
       return;
     }
 
@@ -256,13 +266,19 @@ export const Marketplace: React.FC = () => {
         payload.expiresAt = new Date(expiresAt).toISOString();
       }
 
-      await createMarketplaceStream(payload);
+      const res = await createMarketplaceStream(payload);
       setIsCreateModalOpen(false);
       resetForm();
       fetchStreams();
-      alert("Marketplace VOD stream listed successfully!");
+
+      if (res.data?.status === "PENDING") {
+        toast.info("Marketplace VOD stream submitted. Because it is in a restricted area, it requires moderator approval.");
+      } else {
+        toast.success("Marketplace VOD stream created successfully!");
+      }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to create marketplace listing.");
+      const errMsg = err.response?.data?.message || err.message || "Failed to create marketplace listing.";
+      toast.error(errMsg);
     } finally {
       setActionLoading(false);
     }
@@ -274,6 +290,53 @@ export const Marketplace: React.FC = () => {
     setPlaybackUrl(null);
     setPlaybackError(null);
     setIsDetailsModalOpen(true);
+  };
+
+  // Approve Action Handler
+  const handleApproveStream = async (id: string) => {
+    setActionLoadingId(id);
+    try {
+      const res = await approveMarketplaceStream(id);
+      toast.success("VOD listing approved successfully!");
+      if (selectedStream?.id === id) {
+        setSelectedStream(res.data);
+      }
+      fetchStreams();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to approve listing.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Open Reject Modal
+  const handleOpenRejectModal = (stream: MarketplaceStream) => {
+    setStreamToReject(stream);
+    setRejectionReason("");
+    setIsRejectModalOpen(true);
+  };
+
+  // Confirm Reject Handler
+  const handleConfirmReject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!streamToReject || !rejectionReason.trim()) return;
+
+    setActionLoading(true);
+    try {
+      const res = await rejectMarketplaceStream(streamToReject.id, rejectionReason.trim());
+      toast.success("VOD listing rejected successfully.");
+      if (selectedStream?.id === streamToReject.id) {
+        setSelectedStream(res.data);
+      }
+      setIsRejectModalOpen(false);
+      setStreamToReject(null);
+      setRejectionReason("");
+      fetchStreams();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to reject listing.");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // Handle Fetch Playback Access URL
@@ -303,6 +366,8 @@ export const Marketplace: React.FC = () => {
       case "PUBLISHED":
       case "LIVE":
         return <Badge variant="success">PUBLISHED</Badge>;
+      case "PENDING":
+        return <Badge variant="warning">PENDING</Badge>;
       case "DRAFT":
         return <Badge variant="default">DRAFT</Badge>;
       case "EXPIRED":
@@ -318,6 +383,8 @@ export const Marketplace: React.FC = () => {
   const fallbackThumb =
     "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=600&q=80";
 
+  const pendingCount = streams.filter((s) => s.status === "PENDING").length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -327,7 +394,7 @@ export const Marketplace: React.FC = () => {
             <Store className="h-6 w-6 text-indigo-600 flex-shrink-0" /> Marketplace VOD Administration
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-gray-500">
-            Manage Video-On-Demand (VOD) marketplace streams, inspect purchases, and create listings.
+            Manage Video-On-Demand (VOD) marketplace streams, moderate pending restricted-area listings, and inspect sales.
           </p>
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)} className="self-start sm:self-auto flex items-center gap-1.5 shrink-0 bg-indigo-600 hover:bg-indigo-700">
@@ -344,6 +411,16 @@ export const Marketplace: React.FC = () => {
           <div>
             <p className="text-xs text-gray-500 font-medium">Total Listings</p>
             <p className="text-lg font-bold text-gray-900">{total}</p>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
+          <div className="p-3 bg-amber-50 rounded-lg text-amber-600">
+            <Clock className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Pending Approval</p>
+            <p className="text-lg font-bold text-amber-600">{pendingCount}</p>
           </div>
         </div>
 
@@ -368,16 +445,6 @@ export const Marketplace: React.FC = () => {
             <p className="text-lg font-bold text-gray-900">
               {streams.reduce((acc, curr) => acc + (curr.purchaseCount || 0), 0)}
             </p>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3">
-          <div className="p-3 bg-purple-50 rounded-lg text-purple-600">
-            <Layers className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium">Categories</p>
-            <p className="text-lg font-bold text-gray-900">{categories.length}</p>
           </div>
         </div>
       </div>
@@ -458,6 +525,7 @@ export const Marketplace: React.FC = () => {
               className="w-full sm:w-40 border border-gray-300 rounded-md py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             >
               <option value="">All Statuses</option>
+              <option value="PENDING">PENDING (Approval)</option>
               <option value="PUBLISHED">PUBLISHED</option>
               <option value="DRAFT">DRAFT</option>
               <option value="ENDED">ENDED</option>
@@ -541,6 +609,12 @@ export const Marketplace: React.FC = () => {
                             <p className="text-xs text-gray-500 line-clamp-1 max-w-xs">
                               {stream.description || "No description provided."}
                             </p>
+                            {stream.isRestrictedArea && (
+                              <div className="mt-1 flex items-center text-xs text-amber-600 font-semibold">
+                                <AlertTriangle className="mr-1 h-3 w-3 flex-shrink-0" />
+                                Restricted Location ({stream.restrictedAreaType || "CONDITIONAL"})
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -590,14 +664,41 @@ export const Marketplace: React.FC = () => {
                       </td>
 
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleOpenDetails(stream)}
-                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-900 border border-indigo-100 hover:bg-indigo-50"
-                        >
-                          <Info className="h-3.5 w-3.5 mr-1" /> View Details
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          {stream.status === "PENDING" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                onClick={() => handleApproveStream(stream.id)}
+                                isLoading={actionLoadingId === stream.id}
+                                disabled={actionLoadingId === stream.id}
+                                className="bg-green-600 hover:bg-green-700 text-xs px-2.5 py-1"
+                                title="Approve VOD listing"
+                              >
+                                <Check className="h-3.5 w-3.5 mr-1" /> Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => handleOpenRejectModal(stream)}
+                                disabled={actionLoadingId === stream.id}
+                                className="text-xs px-2.5 py-1"
+                                title="Reject VOD listing"
+                              >
+                                <X className="h-3.5 w-3.5 mr-1" /> Reject
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleOpenDetails(stream)}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-900 border border-indigo-100 hover:bg-indigo-50"
+                          >
+                            <Info className="h-3.5 w-3.5 mr-1" /> View Details
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -930,11 +1031,57 @@ export const Marketplace: React.FC = () => {
               </div>
             </div>
 
+            {selectedStream.status === "PENDING" && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded text-xs flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Restricted Area Listing Awaiting Approval</p>
+                  <p className="mt-0.5">
+                    This stream is pending approval before it can become publicly available for purchase
+                    {selectedStream.restrictedAreaType ? ` (Restricted type: ${selectedStream.restrictedAreaType})` : ""}.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {selectedStream.status === "CANCELLED" && selectedStream.rejectionReason && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded text-xs">
+                <p className="font-semibold">Listing Rejected / Cancelled</p>
+                <p className="mt-0.5">Reason: {selectedStream.rejectionReason}</p>
+              </div>
+            )}
+
             <p className="text-xs text-gray-600 leading-relaxed border-t pt-3">
               {selectedStream.description || "No description available for this VOD stream."}
             </p>
 
             <div className="flex justify-end gap-2 pt-3 border-t">
+              {selectedStream.status === "PENDING" && (
+                <>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={() => {
+                      const str = selectedStream;
+                      setIsDetailsModalOpen(false);
+                      handleOpenRejectModal(str);
+                    }}
+                    disabled={actionLoadingId === selectedStream.id}
+                  >
+                    <X className="h-4 w-4 mr-1" /> Reject Listing
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => handleApproveStream(selectedStream.id)}
+                    isLoading={actionLoadingId === selectedStream.id}
+                    disabled={actionLoadingId === selectedStream.id}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Check className="h-4 w-4 mr-1" /> Approve Listing
+                  </Button>
+                </>
+              )}
               <Button variant="ghost" onClick={() => setIsDetailsModalOpen(false)}>
                 Close
               </Button>
@@ -942,6 +1089,59 @@ export const Marketplace: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* REJECT CONFIRMATION MODAL */}
+      <Modal
+        isOpen={isRejectModalOpen}
+        onClose={() => !actionLoading && setIsRejectModalOpen(false)}
+        title="Reject Marketplace Listing"
+      >
+        <form onSubmit={handleConfirmReject} className="space-y-4">
+          <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-xs text-red-800 space-y-1">
+            <p className="font-semibold text-red-900">
+              Rejecting VOD Listing: {streamToReject?.title}
+            </p>
+            <p>
+              Please provide a clear rejection reason. The listing status will become CANCELLED.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="modal-rejection-reason" className="block text-sm font-medium text-gray-700 mb-1">
+              Rejection Reason <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              id="modal-rejection-reason"
+              rows={3}
+              required
+              placeholder="Explain why this listing is being rejected..."
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none"
+              disabled={actionLoading}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setIsRejectModalOpen(false)}
+              disabled={actionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              isLoading={actionLoading}
+              disabled={actionLoading || !rejectionReason.trim()}
+            >
+              Reject Listing
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

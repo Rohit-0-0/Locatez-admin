@@ -8,12 +8,27 @@ interface TopnavProps {
 }
 
 export const Topnav: React.FC<TopnavProps> = ({ onToggleSidebar }) => {
-  const { user, role, logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     await logout();
     navigate("/login");
+  };
+
+  const getFirstName = (u: any) => {
+    if (!u) return "User";
+    if (u.firstName) return u.firstName;
+    const name = u.fullName || u.displayName || u.name || u.username || "";
+    if (name) {
+      const first = name.split(/[\s_]+/)[0];
+      if (first) return first.charAt(0).toUpperCase() + first.slice(1);
+    }
+    if (u.email) {
+      const emailPrefix = u.email.split("@")[0];
+      return emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+    }
+    return "User";
   };
 
   return (
@@ -32,10 +47,7 @@ export const Topnav: React.FC<TopnavProps> = ({ onToggleSidebar }) => {
       </div>
       <div className="flex items-center space-x-3 sm:space-x-4">
         <div className="flex flex-col items-end">
-          <span className="text-xs sm:text-sm font-medium text-gray-900">{user?.username || user?.email}</span>
-          <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] sm:text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-            {role}
-          </span>
+          <span className="text-sm font-semibold text-gray-900">{getFirstName(user)}</span>
         </div>
         <button
           onClick={handleLogout}

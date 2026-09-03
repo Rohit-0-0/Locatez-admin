@@ -71,3 +71,18 @@ export const getMarketplacePlaybackAccess = async (id: string) => {
   }>(`/marketplace/streams/${id}/access`);
   return response.data;
 };
+
+export const approveMarketplaceStream = async (id: string) => {
+  const response = await apiClient.patch<{ success: boolean; data: MarketplaceStream }>(
+    `/marketplace/streams/${id}/approve`
+  );
+  return response.data;
+};
+
+export const rejectMarketplaceStream = async (id: string, reason: string) => {
+  const response = await apiClient.patch<{ success: boolean; data: MarketplaceStream }>(
+    `/marketplace/streams/${id}/reject`,
+    { reason }
+  );
+  return response.data;
+};

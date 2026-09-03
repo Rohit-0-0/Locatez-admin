@@ -2,9 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Modal } from "../common/Modal";
 import { Input } from "../common/Input";
 import { Button } from "../common/Button";
-import { getCategories } from "../../api/categories.api";
 import { createVideoRequest } from "../../api/videoRequests.api";
-import { Category } from "../../types";
 import { MapPin } from "lucide-react";
 
 interface InitialVideoRequestData {
@@ -29,41 +27,17 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
   onSuccess,
   initialData,
 }) => {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoriesLoading, setCategoriesLoading] = useState(false);
-  const [categoriesError, setCategoriesError] = useState<string | null>(null);
-
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [address, setAddress] = useState("");
   const [latitude, setLatitude] = useState<number | "">("");
   const [longitude, setLongitude] = useState<number | "">("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState<number | "">(60);
   const [rewardAmount, setRewardAmount] = useState<number | "">("");
   const [loading, setLoading] = useState(false);
 
-  const fetchUserCategories = async () => {
-    setCategoriesLoading(true);
-    setCategoriesError(null);
-    try {
-      const res = await getCategories();
-      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
-      setCategories(list);
-      if (list.length > 0) {
-        setSelectedCategoryId(list[0].id);
-      }
-    } catch (err: any) {
-      setCategoriesError(err.response?.data?.message || err.message || "Failed to load categories");
-    } finally {
-      setCategoriesLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (isOpen) {
-      fetchUserCategories();
-
-      // Populate prefilled data if provided (e.g. from Popular Place "Request Video")
       if (initialData) {
         setTitle(initialData.title || "");
         setDescription(initialData.description || "");
@@ -81,13 +55,22 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
         setLongitude("");
         setRewardAmount("");
       }
+      setDurationSeconds(60);
     }
   }, [isOpen, initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim() || !selectedCategoryId) {
-      alert("Please fill in title, description, and select a category.");
+    if (!title.trim() || typeof latitude !== "number" || typeof longitude !== "number") {
+      alert("Please fill in title and a valid location (latitude and longitude).");
+      return;
+    }
+    if (typeof durationSeconds !== "number" || durationSeconds < 1) {
+      alert("Duration must be at least 1 second.");
+      return;
+    }
+    if (typeof rewardAmount !== "number" || rewardAmount <= 0) {
+      alert("Reward amount must be greater than 0.");
       return;
     }
 
@@ -95,12 +78,14 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
     try {
       await createVideoRequest({
         title: title.trim(),
-        description: description.trim(),
-        categoryId: selectedCategoryId,
-        rewardAmount: typeof rewardAmount === "number" ? rewardAmount : 0,
-        address: address.trim() || undefined,
-        latitude: typeof latitude === "number" ? latitude : undefined,
-        longitude: typeof longitude === "number" ? longitude : undefined,
+        description: description.trim() || undefined,
+        durationSeconds,
+        rewardAmount,
+        customLocation: {
+          address: address.trim() || undefined,
+          latitude,
+          longitude,
+        },
       });
 
       onSuccess?.();
@@ -153,38 +138,12 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
           <textarea
             id="req-desc"
             rows={3}
-            required
             className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Describe the video coverage required..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             disabled={loading}
           />
-        </div>
-
-        <div>
-          <label htmlFor="req-category" className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
-            <span>Category</span>
-            {categoriesLoading && <span className="text-xs text-gray-400">Loading categories...</span>}
-          </label>
-          {categoriesError ? (
-            <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{categoriesError}</div>
-          ) : (
-            <select
-              id="req-category"
-              required
-              className="block w-full rounded-md border border-gray-300 p-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
-              disabled={loading || categoriesLoading}
-            >
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          )}
         </div>
 
         <Input
@@ -204,6 +163,7 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
             step="any"
             label="Latitude"
             placeholder="18.9432"
+            required
             value={latitude}
             onChange={(e) => setLatitude(e.target.value ? parseFloat(e.target.value) : "")}
             disabled={loading}
@@ -214,11 +174,25 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
             step="any"
             label="Longitude"
             placeholder="72.8236"
+            required
             value={longitude}
             onChange={(e) => setLongitude(e.target.value ? parseFloat(e.target.value) : "")}
             disabled={loading}
           />
         </div>
+
+        <Input
+          id="req-duration"
+          type="number"
+          min="1"
+          step="1"
+          label="Duration (seconds)"
+          placeholder="60"
+          required
+          value={durationSeconds}
+          onChange={(e) => setDurationSeconds(e.target.value ? parseInt(e.target.value, 10) : "")}
+          disabled={loading}
+        />
 
         <Input
           id="req-reward"
@@ -236,7 +210,7 @@ export const CreateVideoRequestModal: React.FC<CreateVideoRequestModalProps> = (
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button type="submit" isLoading={loading} disabled={!selectedCategoryId}>
+          <Button type="submit" isLoading={loading} disabled={loading}>
             Submit Video Request
           </Button>
         </div>

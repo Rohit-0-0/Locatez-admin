@@ -6,6 +6,11 @@ export interface User {
   id: string;
   email: string;
   username: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  displayName?: string;
+  name?: string;
   phone?: string;
   role: Role;
   status: UserStatus;
@@ -70,12 +75,29 @@ export interface UpdatePopularPlaceStatusPayload {
   isActive: boolean;
 }
 
+export interface VideoRequestParty {
+  id: string;
+  username?: string;
+  fullName?: string | null;
+  name?: string | null;
+}
+
 export interface VideoRequest {
   id: string;
   title: string;
   description: string;
-  requesterId: string;
-  requester?: User;
+  requesterId?: string;
+  userId?: string;
+  requester?: VideoRequestParty | User | any;
+  user?: User | any;
+  requestedBy?: User | any;
+  creator?: User | any;
+  fulfilment?: {
+    id?: string;
+    fulfillerId?: string;
+    fulfiller?: VideoRequestParty | null;
+    status?: string;
+  } | null;
   categoryId: string;
   category?: Category | { id: string; name: string };
   rewardAmount: number;
@@ -163,7 +185,7 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-export type MarketplaceStatus = "DRAFT" | "PUBLISHED" | "ENDED" | "EXPIRED" | "CANCELLED";
+export type MarketplaceStatus = "DRAFT" | "PUBLISHED" | "PENDING" | "ENDED" | "EXPIRED" | "CANCELLED";
 
 export interface MarketplaceStream {
   id: string;
@@ -193,6 +215,9 @@ export interface MarketplaceStream {
   isPurchased?: boolean;
   purchaseCount?: number;
   createdAt: string;
+  rejectionReason?: string | null;
+  isRestrictedArea?: boolean;
+  restrictedAreaType?: string | null;
 }
 
 export interface MarketplacePurchase {

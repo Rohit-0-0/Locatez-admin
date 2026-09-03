@@ -45,6 +45,39 @@ export const VideoRequests: React.FC = () => {
     fetchRequests();
   }, [page, limit, statusFilter]);
 
+  const getPartyName = (party?: {
+    fullName?: string | null;
+    name?: string | null;
+    username?: string | null;
+    firstName?: string;
+    displayName?: string;
+    email?: string;
+  } | null) => {
+    if (!party) return null;
+    const name =
+      party.fullName ||
+      party.name ||
+      party.displayName ||
+      party.firstName ||
+      party.username ||
+      "";
+    if (name) return name;
+    if (party.email) return party.email.split("@")[0];
+    return null;
+  };
+
+  const getRequesterName = (req: VideoRequest) => {
+    const named = getPartyName(req.requester || req.user || req.requestedBy || req.creator);
+    if (named) return named;
+    return req.requesterId || req.userId || "N/A";
+  };
+
+  const getFulfillerName = (req: VideoRequest) => {
+    const named = getPartyName(req.fulfilment?.fulfiller);
+    if (named) return named;
+    return req.fulfilment?.fulfillerId || "—";
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "PENDING": return <Badge variant="warning">PENDING</Badge>;
@@ -102,6 +135,7 @@ export const VideoRequests: React.FC = () => {
                 <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Title</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Category</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Requester</th>
+                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Fulfiller</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Reward</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Created At</th>
@@ -125,8 +159,11 @@ export const VideoRequests: React.FC = () => {
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                     {request.category?.name || "None"}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                    {request.requester?.username || "Unknown"}
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700 max-w-[180px] truncate" title={getRequesterName(request)}>
+                    {getRequesterName(request)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700 max-w-[180px] truncate" title={getFulfillerName(request)}>
+                    {getFulfillerName(request)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                     ₹{(request.rewardAmount || 0).toFixed(2)}

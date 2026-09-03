@@ -105,6 +105,49 @@ export const VideoRequestDetails: React.FC = () => {
     }
   };
 
+  const renderParty = (
+    party?: { id?: string; fullName?: string | null; name?: string | null; username?: string | null; firstName?: string; displayName?: string; email?: string } | null,
+    fallbackId?: string | null
+  ) => {
+    const raw =
+      party?.fullName ||
+      party?.name ||
+      party?.displayName ||
+      party?.firstName ||
+      party?.username ||
+      (party?.email ? party.email.split("@")[0] : "") ||
+      "";
+    const label = raw || (fallbackId ? null : "N/A");
+    const userId = party?.id || fallbackId;
+
+    if (userId && label) {
+      return (
+        <Link to={`/users/${userId}`} className="text-primary hover:underline font-medium">
+          {label}
+        </Link>
+      );
+    }
+    if (userId) {
+      return (
+        <Link to={`/users/${userId}`} className="text-primary hover:underline font-mono text-xs bg-gray-100 px-2.5 py-1 rounded inline-block font-semibold">
+          {userId}
+        </Link>
+      );
+    }
+    return <span className="text-gray-500 font-medium">{label || "N/A"}</span>;
+  };
+
+  const renderRequester = () => {
+    if (!request) return <span>User</span>;
+    const u = request.requester || request.user || request.requestedBy || request.creator;
+    return renderParty(u, request.requesterId || request.userId);
+  };
+
+  const renderFulfiller = () => {
+    if (!request) return <span>—</span>;
+    return renderParty(request.fulfilment?.fulfiller, request.fulfilment?.fulfillerId || null);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -175,13 +218,13 @@ export const VideoRequestDetails: React.FC = () => {
             <div className="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5 sm:px-6">
               <dt className="text-sm font-medium text-gray-500">Requester</dt>
               <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-                {request.requester ? (
-                  <Link to={`/users/${request.requester.id}`} className="text-primary hover:underline">
-                    {request.requester.username} ({request.requester.email})
-                  </Link>
-                ) : (
-                  "Unknown User"
-                )}
+                {renderRequester()}
+              </dd>
+            </div>
+            <div className="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5 sm:px-6">
+              <dt className="text-sm font-medium text-gray-500">Fulfiller</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
+                {renderFulfiller()}
               </dd>
             </div>
             <div className="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5 sm:px-6">
