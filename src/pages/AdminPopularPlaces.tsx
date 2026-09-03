@@ -7,6 +7,7 @@ import {
   deletePopularPlace,
   uploadMedia,
 } from "../api/popularPlaces.api";
+import { getPlacePhotos, PlacePhoto } from "../api/maps.api";
 import { PopularPlace } from "../types";
 import { Badge } from "../components/common/Badge";
 import { Button } from "../components/common/Button";
@@ -23,6 +24,7 @@ import {
   MapPin,
   Loader2,
   AlertTriangle,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export const AdminPopularPlaces: React.FC = () => {
@@ -45,6 +47,11 @@ export const AdminPopularPlaces: React.FC = () => {
   const [latitude, setLatitude] = useState<number | "">("");
   const [longitude, setLongitude] = useState<number | "">("");
   const [imageUrl, setImageUrl] = useState("");
+  const [mapboxId, setMapboxId] = useState<string | null>(null);
+  const [placePhotos, setPlacePhotos] = useState<PlacePhoto[]>([]);
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const [photosError, setPhotosError] = useState<string | null>(null);
+  const [photosPlaceName, setPhotosPlaceName] = useState<string | null>(null);
 
   // Media Upload State
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -75,7 +82,47 @@ export const AdminPopularPlaces: React.FC = () => {
     setLatitude("");
     setLongitude("");
     setImageUrl("");
+    setMapboxId(null);
+    setPlacePhotos([]);
+    setPhotosError(null);
+    setPhotosPlaceName(null);
     setEditingPlace(null);
+  };
+
+  const fetchMapboxPhotos = async (opts: {
+    mapboxId?: string | null;
+    latitude?: number | "";
+    longitude?: number | "";
+  }) => {
+    const hasId = Boolean(opts.mapboxId?.trim());
+    const hasCoords =
+      typeof opts.latitude === "number" && typeof opts.longitude === "number";
+    if (!hasId && !hasCoords) {
+      setPlacePhotos([]);
+      setPhotosPlaceName(null);
+      return;
+    }
+
+    setPhotosLoading(true);
+    setPhotosError(null);
+    try {
+      const res = await getPlacePhotos({
+        ...(hasId ? { mapboxId: opts.mapboxId!.trim() } : {}),
+        ...(hasCoords
+          ? { latitude: opts.latitude as number, longitude: opts.longitude as number }
+          : {}),
+      });
+      setPlacePhotos(Array.isArray(res.data?.photos) ? res.data.photos : []);
+      setPhotosPlaceName(res.data?.name || null);
+      if (res.data?.mapboxId) setMapboxId(res.data.mapboxId);
+    } catch (err: any) {
+      setPlacePhotos([]);
+      setPhotosError(
+        err.response?.data?.message || err.message || "Failed to load Mapbox photos"
+      );
+    } finally {
+      setPhotosLoading(false);
+    }
   };
 
   const handleOpenCreate = () => {
@@ -91,8 +138,149 @@ export const AdminPopularPlaces: React.FC = () => {
     setLatitude(typeof place.latitude === "number" ? place.latitude : "");
     setLongitude(typeof place.longitude === "number" ? place.longitude : "");
     setImageUrl(place.image || "");
+    setMapboxId(null);
+    setPlacePhotos([]);
+    setPhotosError(null);
+    setPhotosPlaceName(null);
     setIsEditModalOpen(true);
+    if (typeof place.latitude === "number" && typeof place.longitude === "number") {
+      void fetchMapboxPhotos({
+        latitude: place.latitude,
+        longitude: place.longitude,
+      });
+    }
   };
+
+  const handleLocationCoordinatesChange = (lat: number, lng: number) => {
+    setLatitude(lat);
+    setLongitude(lng);
+    void fetchMapboxPhotos({
+      mapboxId,
+      latitude: lat,
+      longitude: lng,
+    });
+  };
+
+  const handleMapboxIdChange = (id: string | null) => {
+    setMapboxId(id);
+    if (id) {
+      void fetchMapboxPhotos({ mapboxId: id });
+      return;
+    }
+    void fetchMapboxPhotos({
+      latitude,
+      longitude,
+    });
+  };
+
+  const renderImagePicker = (inputId: string) => (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-gray-700">Place Image</label>
+      <div className="flex flex-col gap-3">
+        <div className="rounded-md border border-indigo-100 bg-indigo-50/40 p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-indigo-800 flex items-center gap-1.5">
+              <ImageIcon className="h-3.5 w-3.5" />
+              Mapbox place photos
+              {photosPlaceName ? ` — ${photosPlaceName}` : ""}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              disabled={photosLoading || (!mapboxId && !isCoordinatesValid)}
+              onClick={() =>
+                fetchMapboxPhotos({
+                  mapboxId,
+                  latitude,
+                  longitude,
+                })
+              }
+            >
+              {photosLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Refresh"}
+            </Button>
+          </div>
+
+          {photosLoading && (
+            <p className="text-xs text-indigo-700 flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading photos for this location…
+            </p>
+          )}
+          {photosError && <p className="text-xs text-red-600">{photosError}</p>}
+          {!photosLoading && !photosError && placePhotos.length === 0 && (
+            <p className="text-xs text-gray-500">
+              No Mapbox photos found for this location. Search a venue or upload your own image.
+            </p>
+          )}
+          {placePhotos.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {placePhotos.map((photo) => {
+                const selected = imageUrl === photo.url;
+                return (
+                  <button
+                    key={photo.url}
+                    type="button"
+                    onClick={() => setImageUrl(photo.url)}
+                    className={`relative aspect-square rounded-md overflow-hidden border-2 transition ${
+                      selected
+                        ? "border-indigo-600 ring-2 ring-indigo-200"
+                        : "border-transparent hover:border-indigo-300"
+                    }`}
+                    title="Select this Mapbox photo"
+                  >
+                    <img src={photo.url} alt="" className="h-full w-full object-cover" />
+                    {selected && (
+                      <span className="absolute bottom-1 left-1 bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
+                        Selected
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-md shadow-xs flex items-center gap-1.5 transition">
+            {uploadingImage ? (
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            ) : (
+              <Upload className="h-4 w-4 text-primary" />
+            )}
+            <span>Upload Image File</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={uploadingImage || actionLoading}
+            />
+          </label>
+          <span className="text-xs text-gray-400">or paste URL below</span>
+        </div>
+
+        <Input
+          id={inputId}
+          type="text"
+          placeholder="https://… or select a Mapbox photo above"
+          required
+          value={imageUrl}
+          onChange={(e) => setImageUrl(e.target.value)}
+          disabled={actionLoading}
+        />
+
+        {imageUrl && (
+          <div className="relative h-32 w-full rounded-lg overflow-hidden border bg-gray-50">
+            <img src={imageUrl} alt="Preview" className="h-full w-full object-cover" />
+            <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded font-mono">
+              Image Preview
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   // Image Upload Handler using POST /api/v1/media/upload
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -380,10 +568,8 @@ export const AdminPopularPlaces: React.FC = () => {
             onLocationChange={setLocation}
             latitude={latitude}
             longitude={longitude}
-            onCoordinatesChange={(lat, lng) => {
-              setLatitude(lat);
-              setLongitude(lng);
-            }}
+            onCoordinatesChange={handleLocationCoordinatesChange}
+            onMapboxIdChange={handleMapboxIdChange}
           />
 
           <div>
@@ -402,37 +588,7 @@ export const AdminPopularPlaces: React.FC = () => {
             />
           </div>
 
-          {/* Image Upload Area */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Place Image</label>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-md shadow-xs flex items-center gap-1.5 transition">
-                  {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Upload className="h-4 w-4 text-primary" />}
-                  <span>Upload Image File</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={uploadingImage || actionLoading} />
-                </label>
-                <span className="text-xs text-gray-400">or paste URL below</span>
-              </div>
-
-              <Input
-                id="create-image-url"
-                type="text"
-                placeholder="https://images.unsplash.com/..."
-                required
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                disabled={actionLoading}
-              />
-
-              {imageUrl && (
-                <div className="relative h-32 w-full rounded-lg overflow-hidden border bg-gray-50">
-                  <img src={imageUrl} alt="Preview" className="h-full w-full object-cover" />
-                  <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded font-mono">Image Preview</span>
-                </div>
-              )}
-            </div>
-          </div>
+          {renderImagePicker("create-image-url")}
 
           <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white">
             <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
@@ -465,10 +621,8 @@ export const AdminPopularPlaces: React.FC = () => {
             onLocationChange={setLocation}
             latitude={latitude}
             longitude={longitude}
-            onCoordinatesChange={(lat, lng) => {
-              setLatitude(lat);
-              setLongitude(lng);
-            }}
+            onCoordinatesChange={handleLocationCoordinatesChange}
+            onMapboxIdChange={handleMapboxIdChange}
           />
 
           <div>
@@ -486,36 +640,7 @@ export const AdminPopularPlaces: React.FC = () => {
             />
           </div>
 
-          {/* Image Upload Area */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Place Image</label>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-md shadow-xs flex items-center gap-1.5 transition">
-                  {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Upload className="h-4 w-4 text-primary" />}
-                  <span>Upload Image File</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={uploadingImage || actionLoading} />
-                </label>
-                <span className="text-xs text-gray-400">or paste URL below</span>
-              </div>
-
-              <Input
-                id="edit-image-url"
-                type="text"
-                required
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                disabled={actionLoading}
-              />
-
-              {imageUrl && (
-                <div className="relative h-32 w-full rounded-lg overflow-hidden border bg-gray-50">
-                  <img src={imageUrl} alt="Preview" className="h-full w-full object-cover" />
-                  <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded font-mono">Image Preview</span>
-                </div>
-              )}
-            </div>
-          </div>
+          {renderImagePicker("edit-image-url")}
 
           <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white">
             <Button type="button" variant="ghost" onClick={() => setIsEditModalOpen(false)}>

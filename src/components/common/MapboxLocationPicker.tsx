@@ -21,6 +21,8 @@ interface MapboxLocationPickerProps {
   latitude: number | "";
   longitude: number | "";
   onCoordinatesChange: (lat: number, lng: number) => void;
+  /** Optional: Search Box retrieve mapbox_id for Places Details photos. */
+  onMapboxIdChange?: (mapboxId: string | null) => void;
 }
 
 const MAP_STYLES = {
@@ -35,6 +37,7 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
   latitude,
   longitude,
   onCoordinatesChange,
+  onMapboxIdChange,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -364,6 +367,7 @@ export const MapboxLocationPicker: React.FC<MapboxLocationPickerProps> = ({
     if (lng !== 0 || lat !== 0) {
       onLocationChange(placeName);
       onCoordinatesChange(lat, lng);
+      onMapboxIdChange?.(result.mapbox_id || null);
 
       if (markerRef.current) {
         markerRef.current.setLngLat([lng, lat]);
